@@ -90,7 +90,7 @@ function App() {
                 >
                   {needle && <ChatHits hits={hits.filter((h) => h.chatId === c.id)} />}
                   {c.agents.length > 0 && (
-                    <SidebarMenuSub>
+                    <SidebarMenuSub className="mr-0 pr-0">
                       {c.agents.map((a) => (
                         <SubagentRow
                           key={a.session}
