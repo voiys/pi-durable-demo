@@ -1,4 +1,5 @@
-import { ArrowUp, MessageCircleDashedIcon, Square } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
+import { BotAvatar } from "@/components/bot-avatar";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { AgentMessage, parseAgentMessage } from "@/components/ai/agents-message";
@@ -25,8 +26,8 @@ import { usePiSession } from "@/pi/use-pi-session";
 import { toTurns, type PiTurn } from "@/pi/view";
 import { FADE, SLIDE_UP } from "@/lib/message-animations";
 import { cn } from "@/lib/utils";
-import { createChat, setChatModel } from "@/server/fns";
-import { chatObjectName, DEFAULT_MODEL, type ChatSummary } from "@/shared";
+import { setBotModel } from "@/server/fns";
+import { botObjectName, type BotSummary } from "@/shared";
 
 /** Consecutive thinking/tool-call parts form one Trace; text parts are markdown. */
 function groupParts(parts: readonly PiMessagePart[]) {
@@ -90,7 +91,7 @@ function Row({ turn, ctx, highlight, enter, reduceMotion }: { turn: PiTurn; ctx:
         className={cn("rounded-lg transition-colors duration-150", highlight && "bg-highlight")}
       >
         {agent ? (
-          <AgentMessage msg={agent} chat={ctx.chat} />
+          <AgentMessage msg={agent} bot={ctx.bot} bots={ctx.bots} />
         ) : (
           <MessageContent className={cn(turn.role === "assistant" && "max-w-2xl gap-3")}>
             {content}
@@ -136,11 +137,8 @@ function ScrollToMessage({ id }: { id?: string }) {
   return null;
 }
 
-/** First messages of chats created by DraftPane, waiting for the new chat's socket. */
-const firstMessages = new Map<string, string>();
-
 /** AI Elements prompt input: Enter sends, Shift+Enter is a new line, stop while running; `tools` sit left of send. */
-function Composer({ onSend, ready, running, onAbort, tools }: { onSend: (text: string) => void; ready: boolean; running: boolean; onAbort: () => void; tools?: ReactNode }) {
+function Composer({ onSend, ready, running, onAbort, placeholder, tools }: { onSend: (text: string) => void; ready: boolean; running: boolean; onAbort: () => void; placeholder: string; tools?: ReactNode }) {
   const [draft, setDraft] = useState("");
   const send = () => {
     if (!draft.trim() || !ready) return;
@@ -159,7 +157,7 @@ function Composer({ onSend, ready, running, onAbort, tools }: { onSend: (text: s
         <InputGroupTextarea
           value={draft}
           autoFocus
-          placeholder={ready ? "Message pi…" : "Connecting…"}
+          placeholder={ready ? placeholder : "Connecting…"}
           aria-label="Message"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -187,57 +185,18 @@ function Composer({ onSend, ready, running, onAbort, tools }: { onSend: (text: s
   );
 }
 
-/** "New chat": nothing exists until the first message, which creates the chat and is sent by its ChatPane. */
-export function DraftPane({ onCreated }: { onCreated: (chatId: string) => void }) {
-  const [choice, setChoice] = useState<{ model: string; thinkingLevel: string }>({ model: DEFAULT_MODEL.id, thinkingLevel: DEFAULT_MODEL.thinkingLevel });
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Empty>
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <MessageCircleDashedIcon />
-          </EmptyMedia>
-          <EmptyTitle>What's on your mind?</EmptyTitle>
-          <EmptyDescription>Your first message starts the chat. Pick the model and reasoning with the brain button.</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-      <Composer
-        ready
-        running={false}
-        onAbort={() => {}}
-        tools={<ModelPicker model={choice.model} thinkingLevel={choice.thinkingLevel} onChange={async (model, thinkingLevel) => setChoice({ model, thinkingLevel })} />}
-        onSend={async (text) => {
-          const { id } = await createChat();
-          // The draft's model choice becomes the new chat's before its first message goes out.
-          if (choice.model !== DEFAULT_MODEL.id || choice.thinkingLevel !== DEFAULT_MODEL.thinkingLevel)
-            await setChatModel({ data: { chatId: id, ...choice } });
-          firstMessages.set(id, text);
-          onCreated(id);
-        }}
-      />
-    </div>
-  );
-}
-
-/** One chat's transcript (main agent, or subagent `session`) with its composer. `chats` are all the user's chats, for agent and chat chips. */
-export function ChatPane({ userId, chatId, session: sessionId, entry, chats }: { userId: string; chatId: string; session?: string; entry?: string; chats: ChatSummary[] }) {
-  const session = usePiSession(chatObjectName(userId, chatId), sessionId);
-  // A chat created by its first message (see DraftPane) sends that message once its socket opens.
-  useEffect(() => {
-    const first = firstMessages.get(chatId);
-    if (first === undefined || session.status !== "open") return;
-    firstMessages.delete(chatId);
-    session.submit(first);
-  }, [chatId, session.status, session.submit]);
+/** A bot's conversation (its main agent, or subagent `session`) with its composer. `bots` are all the user's bots, for chips. */
+export function BotPane({ userId, bot, session: sessionId, entry, bots }: { userId: string; bot: BotSummary; session?: string; entry?: string; bots: BotSummary[] }) {
+  const session = usePiSession(botObjectName(userId, bot.id), sessionId);
   // History doesn't animate in; only messages sent after this pane opened do (pi timestamps them on commit).
   const reduceMotion = useReducedMotion() ?? false;
   const [openedAt] = useState(Date.now);
   const results = new Map<string, ToolResult>();
   for (const m of session.messages)
     for (const p of m.parts) if (p.type === "tool-result") results.set(p.id, p);
-  const ctx: ToolContext = { results, running: session.running, chat: chats.find((c) => c.id === chatId), chats };
+  const ctx: ToolContext = { results, running: session.running, bot, bots };
   const turns = toTurns([...session.messages, ...(session.live ? [session.live] : [])]);
-  // A search hit opens the chat at its message, once the transcript snapshot has it, and its highlight fades after a moment.
+  // A search hit opens the bot at its message, once the transcript snapshot has it, and its highlight fades after a moment.
   const hit = turns.find((t) => entry && t.ids.includes(entry));
   const [cleared, setCleared] = useState<string>();
   useEffect(() => {
@@ -253,6 +212,17 @@ export function ChatPane({ userId, chatId, session: sessionId, entry, chats }: {
         <MessageScroller>
           <MessageScrollerViewport>
             <MessageScrollerContent aria-busy={session.running} className="mx-auto w-full max-w-3xl gap-6 px-4 pt-4 pb-8">
+              {turns.length === 0 && session.status === "open" && !session.running && (
+                <Empty>
+                  <EmptyHeader>
+                    <EmptyMedia>
+                      <BotAvatar bot={bot} size="lg" />
+                    </EmptyMedia>
+                    <EmptyTitle>{bot.name}</EmptyTitle>
+                    <EmptyDescription>{bot.instructions || "Assign it something to research. It keeps one conversation and remembers all of it."}</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
               {turns.map((t) => (
                 <Row key={`${t.role}:${seen[t.role]++}`} turn={t} ctx={ctx} highlight={hit === t && entry !== cleared} enter={t.timestamp >= openedAt} reduceMotion={reduceMotion} />
               ))}
@@ -276,12 +246,13 @@ export function ChatPane({ userId, chatId, session: sessionId, entry, chats }: {
         ready={session.status === "open"}
         running={session.running}
         onAbort={session.abort}
+        placeholder={`Message ${sessionId ? (bot.agents.find((a) => a.session === sessionId)?.name ?? "subagent") : bot.name}…`}
         tools={
           !sessionId && (
             <ModelPicker
               model={session.model?.modelId ?? null}
               thinkingLevel={session.thinkingLevel}
-              onChange={(model, thinkingLevel) => setChatModel({ data: { chatId, model, thinkingLevel } })}
+              onChange={(model, thinkingLevel) => setBotModel({ data: { botId: bot.id, model, thinkingLevel } })}
             />
           )
         }

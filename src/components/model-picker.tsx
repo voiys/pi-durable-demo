@@ -14,7 +14,7 @@ let cached: ModelOption[] | undefined;
 let loading: Promise<ModelOption[]> | undefined;
 
 /** A brain button in the prompt input: pick the model, then the reasoning effort on a stepped slider of that model's levels.
- * `onChange` applies a choice (to a chat, or to a draft before its chat exists). */
+ * `onChange` applies the choice to the bot. */
 export function ModelPicker({ model, thinkingLevel, onChange }: { model: string | null; thinkingLevel: string | null; onChange: (model: string, thinkingLevel: string) => Promise<unknown> }) {
   const [options, setOptions] = useState<ModelOption[]>(cached ?? []);
   useEffect(() => {

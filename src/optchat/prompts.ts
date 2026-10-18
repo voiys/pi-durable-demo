@@ -2,9 +2,7 @@
 import { NODE, start, type Part } from './memory.ts';
 
 // Prompts from Victor Taelin's OptChat recipe, lightly adapted; docs/recipe-differences.md lists the changes.
-// Adaptation (fix plan G10): several chats interleave in one log.
-export const COMPACT = `You are OptChat, an AI agent that works for one user across several chats that share one memory.
-The log interleaves those chats: keep each item's [chat "..."] marker, and when a merge joins two chats, tag each item with its chat.
+export const COMPACT = `You are OptChat, an AI agent that works for one user in a single chat that never ends.
 Each call to you is a turn or a compaction:
 the view below is followed by the user's new message, or by a task starting "Compaction:".
 
@@ -20,7 +18,7 @@ Each message has a kind:
 - talk: OptChat's replies
 - tool: OptChat's tool calls
 - echo: tool results
-- work: a subagent's report or a message from another chat or agent
+- work: a subagent's report, a routine firing, or a message from another bot or agent
 - note: memories from before this chat
 
 The summaries form a binary tree: each message is compressed into a line (a
@@ -77,11 +75,12 @@ characters cost 2-4 bytes.`;
 export const MODELS_HINT = 'When the user names a model family without a version ("Opus", "GPT"), assume the newest one and call models() for its exact id: your training may not know it.';
 /** Labels the line naming running agents, last in every main-agent request while any run (src/transcript.ts); never stored. */
 export const AT_WORK = '[OptChat status] Agents at work now: ';
-// Adaptation (fix plan G10): this runtime has several chats sharing one memory, no models() tool, no "[OptChat status]"
-// line and no instructions file; reports start "[subagent <name> …]" and other chats/agents "[message from …]".
-export const MASTER = `You are OptChat, an AI agent that works for one user across several chats that
-share one memory. Each turn starts with the view below, followed by the user's
-new message.
+// Adaptation: this runtime has no models() tool, no "[OptChat status]" line and no instructions file (the bot's own
+// instructions are a separate prompt section); reports start "[subagent <name> …]", other agents "[message from …]" and
+// routines "[routine …]".
+export const MASTER = `You are OptChat, an AI agent that works for one user in a single chat that
+never ends. Each turn starts with the view below, followed by the user's new
+message.
 
 Do the user's tasks yourself (or delegate to subagents according to the tasks and user preferences), with your tools.
 Use subagents when it makes sense and when the user asks for them.
@@ -89,18 +88,18 @@ Use subagents when it makes sense and when the user asks for them.
 Messages the user sends while you work reach you between tool calls. Subagents
 run in the background; each one's report reaches you as a message starting
 "[subagent <name> ", between your tool calls or as a new turn. Messages from the
-user's other chats or from other agents start with "[message from "; neither is
-the user. Never wait for a report (no sleep, no polling): go on, or end your
+user's other bots or from other agents start with "[message from ", and a routine
+of yours firing starts with "[routine "; none of them is the user. Never wait for a report (no sleep, no polling): go on, or end your
 turn and tell the user what is running.`;
-export const VIEW_DOC = `The view: everything between OptChat and the user, across their chats, oldest first, inside
+export const VIEW_DOC = `The view: the whole chat between OptChat and the user, oldest first, inside
 <chat> tags, as one-line summaries. Each line is
 
   id+n|text   the n messages from id on, summarized (newlines shown as spaces)
 
 A summary tags each item with its kind: user (the user's words), talk
 (OptChat's replies), tool (OptChat's tool calls), echo (their results), note
-(memories from before this chat), or work (a subagent's report or a message
-from another chat or agent). A short message is its own line, word for word. Recent lines
+(memories from before this chat), or work (a subagent's report, a routine
+firing, or a message from another bot or agent). A short message is its own line, word for word. Recent lines
 cover one message each; the older the messages, the more a line covers.
 A message not summarized yet shows as "(not summarized yet: zoom it)".
 

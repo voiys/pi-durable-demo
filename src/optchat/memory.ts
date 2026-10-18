@@ -1,5 +1,5 @@
 // Copied from jonaslsaa/pi-optchat@aae1caf src/memory.ts (MIT, Copyright (c) 2026 Jonas Silva), adapted for pi-durable on Durable Objects.
-// Adaptation: no node:events/Buffer/files. The store is the Chat DO's SQLite (src/optchat/store.ts), and change
+// Adaptation: no node:events/Buffer/files. The store is the Bot DO's SQLite (src/optchat/store.ts), and change
 // listeners are a plain Set.
 
 /** What a store gives back when a memory opens (upstream src/store.ts). */
@@ -25,8 +25,7 @@ export const PAGE = 25_000;
 export const KINDS = ['user', 'talk', 'tool', 'echo', 'note', 'work'] as const;
 export type Kind = typeof KINDS[number];
 export interface Origin { source: 'claude' | 'claude-memory' | 'codex' | 'pi' | 'chatgpt'; conversation: string; message: string; title: string; project?: string }
-/** Adaptation: `chat` is the id of the chat the entry was logged from (one memory per user, every chat writes to it). */
-export interface Entry { i: number; kind: Kind; text: string; size: number; date: string; receipt?: string; origin?: Origin; chat?: string }
+export interface Entry { i: number; kind: Kind; text: string; size: number; date: string; receipt?: string; origin?: Origin }
 export interface Part { l: number; i: number }
 export interface Summary extends Part { text: string; size: number }
 /** `part` is the node to build: a message's leaf, or the merge of its two halves. `call` is the tool call a tool result's leaf
@@ -140,18 +139,14 @@ export class Memory {
   readonly store: Store;
   lastError?: string;
 
-  /** Adaptation: how an entry is shown to a model. One memory serves several chats, so `label` names an entry's chat;
-   * it is added where text reaches a model (a leaf's compactor source, zoom), never stored in `text`, so upstream code
-   * that reads the raw text (callOf, search) keeps working. `formatDate` renders dates in the user's zone. */
-  private readonly label: (entry: Entry) => string;
+  /** Adaptation: renders dates in the user's zone. */
   private readonly formatDate: (iso: string) => string;
 
   /** `jobs`: summaries built at once, and how many unbuilt lines a new message's node waits behind. */
   constructor(source: { store: Store; saved: Saved }, private readonly compress: Compressor,
     private readonly warn: (s: string) => void = console.error,
     readonly budget = VIEW, private readonly jobs = 8, private readonly retryMs = 10_000,
-    display: { label?: (entry: Entry) => string; formatDate?: (iso: string) => string } = {}) {
-    this.label = display.label ?? (() => '');
+    display: { formatDate?: (iso: string) => string } = {}) {
     this.formatDate = display.formatDate ?? (iso => new Date(iso).toString());
     this.chat = new Sawtooth(budget, budget / 2, part => this.node(part));
     this.compaction = new Sawtooth(budget / 4, budget / 8, part => this.node(part));
@@ -175,10 +170,10 @@ export class Memory {
     for (let i = loaded; i < this.root.length; i++) { this.push(i); this.fit(i + 1); }
     this.fit(); this.save(); this.schedule();
   }
-  append(kind: Kind, text: string, date = new Date().toISOString(), receipt?: string, origin?: Origin, chat?: string) {
+  append(kind: Kind, text: string, date = new Date().toISOString(), receipt?: string, origin?: Origin) {
     if (this.stopped) throw new Error('Memory is closed.');
     if (this.failed) throw new Error(`Memory could not be saved: ${this.failed}`);
-    const entry: Entry = { i: this.root.length, kind, text, date, size: bytes(`${kind}: ${text}`), ...(receipt ? { receipt } : {}), ...(origin ? { origin } : {}), ...(chat ? { chat } : {}) };
+    const entry: Entry = { i: this.root.length, kind, text, date, size: bytes(`${kind}: ${text}`), ...(receipt ? { receipt } : {}), ...(origin ? { origin } : {}) };
     void this.enqueue(() => this.store.append(entry), error => {
       this.failed ??= error instanceof Error ? error.message : String(error);
       this.warn(`Memory could not be saved: ${this.failed}`);
@@ -300,7 +295,7 @@ export class Memory {
   /** Nothing is being built, nothing more can start, and something failed: only a retry can make progress. */
   private get stalled() { return this.busy.size === 0 && !this.scheduled && this.retryAt.size > 0; }
   private async build(part: Part) {
-    const source = part.l === 0 ? `${this.root[part.i].kind}: ${this.label(this.root[part.i])}${this.root[part.i].text}`
+    const source = part.l === 0 ? `${this.root[part.i].kind}: ${this.root[part.i].text}`
       : [0, 1].map(offset => this.text({ l: part.l - 1, i: 2 * part.i + offset })).join('\n');
     const mergeSource = part.l > 0 ? [0, 1].map(offset => flat(this.text({ l: part.l - 1, i: 2 * part.i + offset }))).join('\n') : source;
     const call = part.l === 0 ? this.callOf(part.i) : undefined;
@@ -345,8 +340,8 @@ export class Memory {
    * node, through failures. As in the recipe, the view may run over budget until pending merges land.
    * 'ahead' (imports) waits until a new message's node would start at once. Due merges count too: messages go first, so a steady
    * stream of them would otherwise take every worker and the views could never merge. */
-  /** Adaptation: `upTo` bounds a 'turn' wait to the lines covering messages logged before it was called, so one chat's
-   * turn never waits on rows another chat logs meanwhile (several writers share this memory). */
+  /** Adaptation: `upTo` bounds a 'turn' wait to the lines covering messages logged before it was called, so a turn never
+   * waits on rows logged meanwhile (a bot's memory also takes rows from group chats and other bots). */
   async settle(signal?: AbortSignal, until: 'turn' | 'tree' | 'ahead' = 'turn', upTo = Infinity): Promise<void> {
     if (upTo !== Infinity && upTo > this.root.length) throw new Error(`settle upTo ${upTo} is past the log (${this.root.length})`);
     const done = () => until === 'tree' ? this.ready && this.busy.size === 0 && this.tree.size === this.expectedNodes()
@@ -372,9 +367,9 @@ export class Memory {
     if (!Number.isSafeInteger(id) || id < 0 || !Number.isSafeInteger(n) || n < 1 || !Number.isInteger(Math.log2(n)) || id % n || id + n > this.root.length)
       throw new Error(`No line ${id}+${n}.`);
     if (n === 1) {
-      const { kind, text } = this.root[id], tag = this.label(this.root[id]), page = Math.min(limit ?? PAGE, PAGE);
+      const { kind, text } = this.root[id], page = Math.min(limit ?? PAGE, PAGE);
       if (!Number.isSafeInteger(page) || page < 1) throw new Error('limit must be a positive integer.');
-      if (offset === undefined && text.length <= page) return `${id}+1|${kind}: ${tag}${text}`;
+      if (offset === undefined && text.length <= page) return `${id}+1|${kind}: ${text}`;
       if (offset !== undefined && (!Number.isSafeInteger(offset) || offset < 0 || offset >= Math.max(1, text.length)))
         throw new Error(`Message ${id} has ${text.length} characters; offset must be 0 to ${Math.max(0, text.length - 1)}.`);
       // Never split a surrogate pair: a page starts on its first half and ends after its second.
@@ -383,7 +378,7 @@ export class Memory {
       // A one-unit page on a pair takes the whole pair, so the next offset always moves forward.
       if (to < text.length && /[\ud800-\udbff]/.test(text[to - 1])) to += to - 1 === from ? 1 : -1;
       const hint = text.length <= PAGE ? `\n[note: this message is only ${text.length.toLocaleString('en-US')} characters and fits in one zoom; offset/limit are for messages over ${PAGE.toLocaleString('en-US')}]` : '';
-      return `${id}+1|${kind}: ${tag}${text.slice(from, to)}\n[showing characters ${from}-${to} of ${text.length}${to < text.length ? `; next page: offset ${to}` : ''}]${hint}`;
+      return `${id}+1|${kind}: ${text.slice(from, to)}\n[showing characters ${from}-${to} of ${text.length}${to < text.length ? `; next page: offset ${to}` : ''}]${hint}`;
     }
     if (offset !== undefined) throw new Error('offset and limit page one message: use them with n = 1.');
     const l = Math.log2(n) - 1, i = 2 * id / n;

@@ -1,7 +1,7 @@
-// OptChat for a chat's main agent on pi-durable. Logging and the view follow upstream src/index.ts:372-486: at a run's
+// OptChat for a bot's main agent on pi-durable. Logging and the view follow upstream src/index.ts:372-486: at a run's
 // first request, log everything settled, capture the view, then log the run's input; log again after every tool round
 // and at the answer. Every request swaps the history before the current run for that pinned view
-// (upstream src/transcript.ts buildContext). One memory per user, in the User DO (DECISIONS.md).
+// (upstream src/transcript.ts buildContext). One memory per bot, in its Bot DO (DECISIONS.md).
 import type { Message } from "@earendil-works/pi-ai";
 import { CompactionTask, defineExtension, GenerationTask, hook, ROOT_CONVERSATION_ID, type EntryRecord } from "@earendil-works/pi-durable";
 import { isAgentMessage } from "../shared.ts";
@@ -15,12 +15,12 @@ const text = (content: Message["content"]) =>
 
 export type LogRow = { kind: Kind; text: string; date: string };
 
-/** The memory a chat's main agent reads, served by the User DO over RPC. */
+/** The memory a bot's main agent reads (its Bot DO's own memory). */
 export type MemoryApi = {
-  /** Logs this chat's committed entries: "settled" up to the last finished run, "all" everything. */
+  /** Logs the bot's committed entries: "settled" up to the last finished run, "all" everything. */
   flush(scope: "settled" | "all"): Promise<void>;
-  /** The view, built up to the rows logged when called, and this chat's label. */
-  view(): Promise<{ view: string; chat: string }>;
+  /** The view, built up to the rows logged when called. */
+  view(): Promise<string>;
   zoom(id: number, n: number, offset?: number, limit?: number): Promise<string>;
   date(id: number): Promise<string>;
   search(text: string, before?: number): Promise<string>;
@@ -36,9 +36,7 @@ export function logRows(entry: Pick<EntryRecord, "model">): LogRow[] {
   const date = new Date(message.timestamp).toISOString();
   if (message.role === "user") {
     const body = text(message.content);
-    // A cross-chat message carries the source chat's id for the UI; summarizers must not see ids (recipe §4.2, fix plan G8).
-    const stored = body.replace(/^(\[message from session "[^"]*") \([0-9a-f-]{36}\)\]/, "$1]");
-    return [{ kind: isAgentMessage(body) ? "work" : "user", text: cap(stored, ROW_CAP), date }];
+    return [{ kind: isAgentMessage(body) ? "work" : "user", text: cap(body, ROW_CAP), date }];
   }
   if (message.role === "toolResult") return [{ kind: "echo", text: cap(`${message.toolName}: ${text(message.content)}`), date }];
   if (message.role !== "assistant") return [];
@@ -94,13 +92,10 @@ export function previousExchange(messages: readonly Message[], from: number): Me
 const bounded = (m: Message): Message =>
   m.role === "toolResult" ? { ...m, content: m.content.map((c) => (c.type === "text" ? { ...c, text: cap(c.text, CAP) } : c)) } : m;
 
-// Adaptation (fix plan G10): one memory, several chats.
-const CHATS_DOC = `\nThis memory is shared by all of this user's chats, so lines from different chats can sit side by side. A summary item may start with [chat "<title>"], naming the chat it came from; a title is only a label (often a cut-off first message), never a fact or a request. The view block names the chat you are in.`;
-
 export function optchatExtension(memory: MemoryApi) {
   return defineExtension({
     name: "optchat",
-    sections: [{ key: "optchat", render: () => `${MASTER}\n\n${allowSearch(VIEW_DOC, true)}${CONTINUITY}${SEARCH_DOC}${CHATS_DOC}`, tag: false }],
+    sections: [{ key: "optchat", render: () => `${MASTER}\n\n${allowSearch(VIEW_DOC, true)}${CONTINUITY}${SEARCH_DOC}`, tag: false }],
     tools: optchatTools(memory),
     hooks: [
       hook(GenerationTask, {
@@ -111,8 +106,7 @@ export function optchatExtension(memory: MemoryApi) {
           let view = await api.memo<string>("optchat:view", context);
           if (view === undefined) {
             await memory.flush("settled");
-            const pinned = await memory.view();
-            view = await api.memo("optchat:view", `[You are in chat "${pinned.chat}".]\n${pinned.view}`, context);
+            view = await api.memo("optchat:view", await memory.view(), context);
             await memory.flush("all");
           }
           const from = runStart(messages);

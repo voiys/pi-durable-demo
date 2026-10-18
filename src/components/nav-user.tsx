@@ -1,7 +1,7 @@
 // shadcn sidebar-07 nav-user block (shadcn-ui-source apps/v4/registry/new-york-v4/blocks/sidebar-07/components/nav-user.tsx),
-// with the ChatGPT plan connection in place of the demo items.
+// collapsed to an avatar for the bot rail, with the ChatGPT plan connection in place of the demo items.
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronsUpDown, ExternalLink, LogOut, Sparkles, Unplug } from "lucide-react";
+import { ExternalLink, LogOut, Sparkles, Unplug } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { authClient } from "@/lib/auth-client";
 import { connectChatGPT, disconnectChatGPT } from "@/server/fns";
 import type { UserState } from "@/shared";
@@ -35,67 +34,55 @@ function Identity({ name, email }: { name: string; email: string }) {
 
 export const connect = () => connectChatGPT().then((url) => (window.location.href = url), fail("connect ChatGPT"));
 
+/** The rail's account button (sidebar-07 nav-user, collapsed): the avatar opens identity, the ChatGPT plan and log out. */
 export function NavUser({ user, chatgpt }: { user: { name: string; email: string }; chatgpt: UserState["chatgpt"] }) {
-  const { isMobile } = useSidebar();
   const navigate = useNavigate();
-
   return (
-    <SidebarMenu>
-      {!chatgpt && (
-        <SidebarMenuItem>
-          <Button size="lg" className="w-full" onClick={connect}>
-            <Sparkles />
-            Continue with ChatGPT
-          </Button>
-        </SidebarMenuItem>
-      )}
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-              <Identity name={user.name} email={user.email} />
-              <ChevronsUpDown className="ml-auto size-4" />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg" side={isMobile ? "bottom" : "right"} align="end" sideOffset={4}>
-            <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Identity name={user.name} email={user.email} />
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
-                {chatgpt ? `ChatGPT plan · ${chatgpt.email}` : "ChatGPT plan not connected"}
-              </DropdownMenuLabel>
-              {chatgpt ? (
-                <>
-                  <DropdownMenuItem asChild>
-                    <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer">
-                      <ExternalLink />
-                      Manage usage
-                    </a>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => disconnectChatGPT().catch(fail("disconnect ChatGPT"))}>
-                    <Unplug />
-                    Disconnect ChatGPT
-                  </DropdownMenuItem>
-                </>
-              ) : (
-                <DropdownMenuItem onSelect={connect}>
-                  <Sparkles />
-                  Continue with ChatGPT
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => authClient.signOut().then(() => navigate({ to: "/login" }), fail("log out"))}>
-              <LogOut />
-              Log out
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-9 rounded-full" aria-label="Open account menu">
+          <Avatar className="size-8">
+            <AvatarFallback>{user.name.slice(0, 1).toUpperCase()}</AvatarFallback>
+          </Avatar>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="min-w-56 rounded-lg" side="right" align="end" sideOffset={8}>
+        <DropdownMenuLabel className="p-0 font-normal">
+          <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+            <Identity name={user.name} email={user.email} />
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
+            {chatgpt ? `ChatGPT plan · ${chatgpt.email}` : "ChatGPT plan not connected"}
+          </DropdownMenuLabel>
+          {chatgpt ? (
+            <>
+              <DropdownMenuItem asChild>
+                <a href="https://chatgpt.com/settings/usage" target="_blank" rel="noreferrer">
+                  <ExternalLink />
+                  Manage usage
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => disconnectChatGPT().catch(fail("disconnect ChatGPT"))}>
+                <Unplug />
+                Disconnect ChatGPT
+              </DropdownMenuItem>
+            </>
+          ) : (
+            <DropdownMenuItem onSelect={connect}>
+              <Sparkles />
+              Continue with ChatGPT
             </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SidebarMenuItem>
-    </SidebarMenu>
+          )}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => authClient.signOut().then(() => navigate({ to: "/login" }), fail("log out"))}>
+          <LogOut />
+          Log out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -1,7 +1,7 @@
 import * as Alchemy from "alchemy";
 import * as Cloudflare from "alchemy/Cloudflare";
 import * as Effect from "effect/Effect";
-import type { Chat, User } from "./src/worker.ts";
+import type { Bot, User } from "./src/worker.ts";
 import { PORT } from "./src/origin.ts";
 
 process.loadEnvFile();
@@ -15,7 +15,7 @@ export const Website = Cloudflare.Website.Vite("Website", {
     DB,
     BETTER_AUTH_SECRET,
     User: Cloudflare.DurableObject<User>("User"),
-    Chat: Cloudflare.DurableObject<Chat>("Chat"),
+    Bot: Cloudflare.DurableObject<Bot>("Bot"),
   },
   compatibility: { date: "2026-10-01", flags: ["nodejs_compat"] },
   dev: { host: "127.0.0.1", port: PORT, strictPort: true },

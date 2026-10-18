@@ -3,13 +3,13 @@ import { routeAgentRequest } from "agents";
 import type { Env } from "./env.ts";
 import { auth } from "./server/auth.ts";
 
-export { Chat } from "./server/chat.ts";
+export { Bot } from "./server/bot.ts";
 export { User } from "./server/user.ts";
 
 /**
  * Every agent socket/request is resolved to the better-auth user first.
- * `/agents/user/<name>` must be the caller's own id, `/agents/chat/<name>` must
- * be `<id>--<chatId>` for a chat in the caller's catalog, so one user can never reach another user's objects.
+ * `/agents/user/<name>` must be the caller's own id, `/agents/bot/<name>` must
+ * be `<id>--<botId>` for a bot in the caller's catalog, so one user can never reach another user's objects.
  */
 async function routeAgent(request: Request, env: Env): Promise<Response> {
   const session = await auth().api.getSession({ headers: request.headers });
@@ -19,9 +19,9 @@ async function routeAgent(request: Request, env: Env): Promise<Response> {
   if (segments.length !== 4) return new Response("Not found", { status: 404 });
   const [, , kind, name] = segments;
   const id = session.user.id;
-  const chatId = kind === "chat" && name?.startsWith(`${id}--`) ? name.slice(id.length + 2) : undefined;
-  // A chat must also be in the caller's own catalog, so nobody can mint Chat objects outside it.
-  const allowed = (kind === "user" && name === id) || (chatId !== undefined && (await env.User.getByName(id).hasChat(chatId)));
+  const botId = kind === "bot" && name?.startsWith(`${id}--`) ? name.slice(id.length + 2) : undefined;
+  // A bot must also be in the caller's own catalog, so nobody can mint Bot objects outside it.
+  const allowed = (kind === "user" && name === id) || (botId !== undefined && (await env.User.getByName(id).hasBot(botId)));
   if (!allowed) return new Response("Forbidden", { status: 403 });
   const response = await routeAgentRequest(request, env);
   if (!response) throw new Error(`routeAgentRequest did not route ${request.url}`);

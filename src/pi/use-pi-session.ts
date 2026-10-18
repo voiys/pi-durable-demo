@@ -33,7 +33,7 @@ export function usePiSession(object: string, session?: string) {
   const [state, setState] = useState<State>(INITIAL_STATE);
 
   const agent = useAgent({
-    agent: "chat",
+    agent: "bot",
     name: object,
     query: session ? { session } : undefined,
     onOpen: () => setState((current) => ({ ...current, status: "open" })),

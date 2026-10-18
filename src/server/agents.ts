@@ -1,7 +1,7 @@
 // v1: agent-to-agent messaging, Mario Zechner's model (RESEARCH.md "v1").
-// A session = one Chat DO = the main agent (pi's root conversation) + its subagents (conversations owned by an anchor task).
-// Every agent can list its session's agents, message them, read their last message and inspect them; the main agent can
-// also spawn subagents and reach the main agent of the user's other sessions (other Chat DOs of the same user).
+// A session = one Bot DO = the bot's main agent (pi's root conversation) + its subagents (conversations owned by an
+// anchor task). Every agent can list its session's agents, message them, read their last message and inspect them; the
+// main agent can also spawn subagents and reach the user's other bots (other Bot DOs of the same user).
 // Subagent machinery (Subagents doc, Anchor, Reporter) is adapted from pi-source-v1.3.0
 // packages/durable/test/examples/23-subagent-background.ts.
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -79,17 +79,17 @@ const Reporter = defineTask<ReporterInput, ReporterState, null>({
   abort: (_t, runtime, ctx) => runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx),
 });
 
-/** What the Chat DO gives the tools: its harness and RPC to the user's other sessions. */
+/** What the Bot DO gives the tools: its harness and RPC to the user's other bots. */
 export type AgentHost = {
   harness: PiHarness;
-  chatId: string;
-  /** The user's other chats (never another user's: the User DO is this chat's owner). */
-  sessions(): Promise<{ id: string; title: string }[]>;
-  sendToSession(chatId: string, from: string, message: string): Promise<void>;
-  lastOfSession(chatId: string): Promise<string>;
+  botId: string;
+  /** The user's bots (never another user's: the User DO is this bot's owner). */
+  bots(): Promise<{ id: string; name: string }[]>;
+  sendToBot(botId: string, message: string): Promise<void>;
+  lastOfBot(botId: string): Promise<string>;
   /** Extensions subagents don't get (the main agent's OptChat memory). */
   childExcluded(): Extension[];
-  /** Tells the User DO which subagents this chat has, for the sidebar. */
+  /** Tells the User DO which subagents this bot has, for its details panel. */
   agentsChanged(): Promise<void>;
 };
 
@@ -215,30 +215,30 @@ export function agentExtensions(host: AgentHost) {
     },
   });
 
-  const sessions = defineTool({
-    name: "sessions",
+  const bots = defineTool({
+    name: "bots",
     description:
-      "Reach the main agent of the user's other chat sessions. Actions: list, send (id, message: delivered as a new message " +
-      "to that session's main agent), last (id: that session's main agent's last answer).",
+      "Reach the user's other bots, each an agent with its own conversation and memory. Actions: list, send (name, message: " +
+      "delivered to that bot as a new message from you), last (name: that bot's last answer).",
     parameters: Type.Object({
       action: Type.Union([Type.Literal("list"), Type.Literal("send"), Type.Literal("last")]),
-      id: Type.Optional(Type.String()),
+      name: Type.Optional(Type.String()),
       message: Type.Optional(Type.String()),
     }),
     replay: "unsafe",
-    execute: async ({ action, id, message }) => {
-      const others = (await host.sessions()).filter((s) => s.id !== host.chatId);
-      if (action === "list") return say(others.map((s) => `${s.id}: ${s.title}`).join("\n") || "No other sessions.");
-      const target = others.find((s) => s.id === id);
-      if (!target) return { ...say(`No other session with id ${id}`), isError: true };
-      if (action === "last") return say(await host.lastOfSession(target.id));
+    execute: async ({ action, name, message }) => {
+      const others = (await host.bots()).filter((b) => b.id !== host.botId);
+      if (action === "list") return say(others.map((b) => b.name).join("\n") || "No other bots.");
+      const target = others.find((b) => b.name.toLowerCase() === name?.toLowerCase());
+      if (!target) return { ...say(`No other bot named ${name}`), isError: true };
+      if (action === "last") return say(await host.lastOfBot(target.id));
       if (!message) return { ...say("send needs a message"), isError: true };
-      await host.sendToSession(target.id, host.chatId, message);
-      return say(`Sent to session "${target.title}".`);
+      await host.sendToBot(target.id, message);
+      return say(`Sent to ${target.name}.`);
     },
   });
 
-  const MainTools = defineExtension({ name: "main-agent-tools", tasks: [Anchor, Reporter], tools: [subagent, sessions] });
+  const MainTools = defineExtension({ name: "main-agent-tools", tasks: [Anchor, Reporter], tools: [subagent, bots] });
   const PeerTools = defineExtension({ name: "session-agent-tools", tools: [peers] });
   return { MainTools, PeerTools };
 }

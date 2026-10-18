@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { CalendarIcon, CircleCheckIcon, LoaderCircleIcon, SearchIcon, TerminalIcon, ZoomInIcon } from "lucide-react";
+import { CalendarClockIcon, CalendarIcon, CircleCheckIcon, LoaderCircleIcon, SearchIcon, TerminalIcon, ZoomInIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { agentStep, type Step } from "@/components/ai/agents-tools";
 import { Chip } from "@/components/ai/chips";
@@ -16,16 +16,16 @@ import {
   TraceTitle,
 } from "@/components/ui/trace";
 import type { PiMessagePart } from "@/pi/transcript";
-import type { ChatSummary } from "@/shared";
+import type { BotSummary } from "@/shared";
 
 type ToolCall = Extract<PiMessagePart, { type: "tool-call" }>;
 export type ToolResult = Extract<PiMessagePart, { type: "tool-result" }>;
 
 /**
  * What tool rows need beyond their call: the results by call id, whether the session is running (a call without a
- * result in an idle session was interrupted), and the user's chats so agent and chat chips link to transcripts.
+ * result in an idle session was interrupted), this bot and all the user's bots so chips link to conversations.
  */
-export type ToolContext = { results: Map<string, ToolResult>; running: boolean; chat?: ChatSummary; chats: ChatSummary[] };
+export type ToolContext = { results: Map<string, ToolResult>; running: boolean; bot: BotSummary; bots: BotSummary[] };
 
 /** pi reasoning (chat-demo ReasoningRow, reasoning-duration): a collapsible line, open while thinking, with how long it took. */
 export function Reasoning({ text, running }: { text: string; running: boolean }) {
@@ -54,7 +54,7 @@ export function Reasoning({ text, running }: { text: string; running: boolean })
   );
 }
 
-type Args = { id?: number; n?: number; text?: string };
+type Args = { id?: number; n?: number; text?: string; action?: string; name?: string; prompt?: string; cron?: string };
 
 const List = ({ items }: { items: string[] }) => (
   <ul className="flex max-h-64 flex-col gap-1 overflow-auto overscroll-contain">
@@ -68,7 +68,7 @@ const List = ({ items }: { items: string[] }) => (
 
 /** How one tool call reads: purpose-built for our own tools (memory here, agents in agents-tools), a generic tool-states row for the rest. */
 function step(call: ToolCall, output: string, running: boolean, ctx: ToolContext): Step {
-  const agent = agentStep(call.name, call.arguments as Parameters<typeof agentStep>[1], output, running, ctx.chat, ctx.chats);
+  const agent = agentStep(call.name, call.arguments as Parameters<typeof agentStep>[1], output, running, ctx.bot, ctx.bots);
   if (agent) return agent;
   const a = call.arguments as Args;
   const v = (ing: string, ed: string) => (running ? ing : ed);
@@ -90,6 +90,13 @@ function step(call: ToolCall, output: string, running: boolean, ctx: ToolContext
         title: `${v("Opening", "Opened")} ${n > 1 ? `memory ${a.id}–${a.id! + n - 1}` : `message ${a.id}`}`,
         body: output && <List items={output.split("\n")} />,
       };
+    }
+    case "routines": {
+      // While the call streams in, its arguments may not name the action yet.
+      if (!a.action) return { icon: <CalendarClockIcon />, title: "Calling routines" };
+      if (a.action === "list") return { icon: <CalendarClockIcon />, title: `${v("Listing", "Listed")} routines`, body: output && <List items={output.split("\n")} /> };
+      if (a.action === "add") return { icon: <CalendarClockIcon />, title: `${v("Adding", "Added")} routine ${a.name}`, description: a.cron && `${a.cron} UTC`, body: a.prompt && <Markdown>{a.prompt}</Markdown> };
+      return { icon: <CalendarClockIcon />, title: `${v("Removing", "Removed")} routine ${a.name}` };
     }
     case "date": {
       // The tool answers with Date#toString for the model; the row shows it short.

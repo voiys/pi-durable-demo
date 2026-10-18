@@ -1,4 +1,4 @@
-// Adaptation of jonaslsaa/pi-optchat src/store.ts (MIT): the memory's log, tree and saved view live in the Chat DO's
+// Adaptation of jonaslsaa/pi-optchat src/store.ts (MIT): the memory's log, tree and saved view live in the Bot DO's
 // SQLite instead of JSONL files. DO storage writes are durable when the call returns, so every write is synchronous.
 import type { Entry, Saved, Store, Summary } from "./memory.ts";
 

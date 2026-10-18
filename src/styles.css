@@ -124,10 +124,3 @@
     * { @apply border-border outline-ring/50; }
     body { @apply bg-background text-foreground overscroll-none; }
 }
-
-/* Sidebar icons track the label weight: 1.5px beside 400, 2px beside the font-medium active row. */
-[data-sidebar="menu-button"] > svg,
-[data-sidebar="menu-sub-button"] > svg,
-[data-sidebar="menu-action"] > svg { stroke-width: 1.5; }
-[data-sidebar="menu-button"][data-active="true"] > svg,
-[data-sidebar="menu-sub-button"][data-active="true"] > svg { stroke-width: 2; }
