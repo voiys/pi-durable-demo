@@ -7,23 +7,26 @@ import { COMPACT, compaction, IMPORT_GUIDANCE, tooLong } from "./prompts.ts";
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
-    const t = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => (clearTimeout(t), reject(signal.reason)), { once: true });
+    const abort = () => (clearTimeout(t), reject(signal.reason));
+    const t = setTimeout(() => (signal.removeEventListener("abort", abort), resolve()), ms);
+    signal.addEventListener("abort", abort, { once: true });
   });
 
 /** Upstream default "summary size tolerance" (src/settings.ts:23 summaryAcceptBytes). */
 const ACCEPT_BYTES = NODE * 1.25;
 
-export function createCompressor(models: () => Models, choice: () => { provider: string; model: string; thinking: ModelThinkingLevel }, retryDelays: readonly number[] = [1000, 2000]): Compressor {
+/** `choice` is async: the User DO checks the model against the plan's list before each call (fix plan G11). */
+export function createCompressor(models: () => Models, choice: () => Promise<{ provider: string; model: string; thinking: ModelThinkingLevel }>, retryDelays: readonly number[] = [1000, 2000]): Compressor {
   return async (input, signal) => {
-    const selected = choice();
+    const selected = await choice();
     const model = models().getModel(selected.provider, selected.model);
     if (!model) throw new Error(`Compactor model unavailable: ${selected.provider}/${selected.model}`);
     const level = clampThinkingLevel(model, selected.thinking);
     const step = `${input.historical ? IMPORT_GUIDANCE + "\n\n" : ""}${compaction(input)}`;
     // OpenAI joins text blocks with nothing between them, so the task starts its own paragraph after the view.
     const messages: Message[] = [{ role: "user", content: [{ type: "text", text: input.context }, { type: "text", text: `\n\n${step}` }], timestamp: Date.now() }];
-    const ask = () => models().completeSimple(model, { systemPrompt: COMPACT, messages }, { sessionId: "optchat-compactor", reasoning: level === "off" ? undefined : level, signal });
+    // A hung request must not block a turn in settle forever (fix plan G11).
+    const ask = () => models().completeSimple(model, { systemPrompt: COMPACT, messages }, { sessionId: "optchat-compactor", reasoning: level === "off" ? undefined : level, signal: AbortSignal.any([signal, AbortSignal.timeout(90_000)]) });
     const answer = async () => {
       for (let retry = 0; ; retry++) {
         const reply = await ask();

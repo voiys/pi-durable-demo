@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createRegistry, GenerationTask, Harness, hook, ROOT_CONVERSATION_ID, type EntryRecord } from "@earendil-works/pi-durable";
 import { PiHarness, ROOT_SESSION } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
@@ -7,7 +8,7 @@ import { WebSockets } from "agents/websockets";
 import type { Env } from "../env.ts";
 import { PiSessionSockets } from "../pi/sockets.ts";
 import { agentExtensions, lastOf, retireSubagent, sessionAgents, type AgentHost } from "./agents.ts";
-import { logRows, optchatExtension } from "../optchat/extension.ts";
+import { logRows, optchatExtension, settledEnd } from "../optchat/extension.ts";
 import { MODEL, pickerOptions, planModels } from "./models.ts";
 import { DEFAULT_MODEL, type IndexRow, type ModelOption } from "../shared.ts";
 
@@ -34,7 +35,8 @@ export class Chat extends DurableObject<Env> {
   readonly registry = createRegistry();
   // The main agent's OptChat memory is the owner's, shared by all their chats (User DO).
   readonly #optchat = optchatExtension({
-    view: () => this.#user().memoryView(),
+    flush: (scope) => this.#log(scope),
+    view: () => this.#user().memoryView(this.chatId),
     zoom: (id, n, offset, limit) => this.#user().memoryZoom(id, n, offset, limit),
     date: (id) => this.#user().memoryDate(id),
     search: (text, before) => this.#user().memorySearch(text, before),
@@ -44,13 +46,17 @@ export class Chat extends DurableObject<Env> {
     harness: ({ storage, context }) => {
       this.registry.install({
         name: "chat",
-        sections: [{ key: "preamble", render: () => PREAMBLE, tag: false }],
+        // The main agent's identity is OptChat's MASTER prompt; subagents keep the plain preamble (fix plan G10).
+        sections: [{ key: "preamble", render: (input) => (input.conversationId === ROOT_CONVERSATION_ID ? undefined : PREAMBLE), tag: false }],
         hooks: [
           hook(GenerationTask, {
-            onYield: (_answer, api) => {
+            // Log as the run goes, as upstream logs each message on message_end (fix plan G2): other chats see this run's steps.
+            afterTools: (_assistant, _results, api) => (api.conversationId === ROOT_CONVERSATION_ID ? this.#log("all") : undefined),
+            // The answer comes from the hook argument: pi commits it right after this hook runs.
+            onYield: (answer, api) => {
               if (api.conversationId !== ROOT_CONVERSATION_ID) return;
               this.ctx.waitUntil(this.syncIndex());
-              this.ctx.waitUntil(this.logTurn());
+              this.ctx.waitUntil(this.#log("all", answer));
             },
           }),
         ],
@@ -109,6 +115,7 @@ export class Chat extends DurableObject<Env> {
   async receive(fromChatId: string, message: string) {
     const from = (await this.#user().listChats()).find((c) => c.id === fromChatId);
     if (!from) throw new Error(`Unknown session ${fromChatId}`);
+    // The id is for the UI's chat chip; logRows strips it before the memory sees it (recipe §4.2: no ids for summarizers).
     await this.harness.session().submit(`[message from session "${from.title}" (${from.id})] ${message}`, { whenBusy: "followUp" });
   }
 
@@ -128,12 +135,29 @@ export class Chat extends DurableObject<Env> {
     await this.ctx.storage.deleteAll();
   }
 
-  /** Logs the root conversation's finished turn into the OptChat memory; it summarizes in the background. */
-  async logTurn() {
-    const logged = (this.ctx.storage.kv.get("optchat:logged") as number | undefined) ?? 0;
-    const entries = await this.harness.session().messages();
-    await this.#user().memoryLog(this.chatId, entries.slice(logged).flatMap(logRows));
-    this.ctx.storage.kv.put("optchat:logged", entries.length);
+  #logging: Promise<unknown> = Promise.resolve();
+  /** Cache of this chat's cursor in the User DO, which owns the authoritative one (fix plan G3). */
+  #cursor: number | undefined;
+
+  /** Logs this chat's committed root entries past the cursor into the user's memory, one call at a time. "settled" stops
+   * at the last finished run (the view must not hold the run it is built for); `answer` is a final answer pi hasn't
+   * committed yet. */
+  #log(scope: "settled" | "all", answer?: AssistantMessage): Promise<void> {
+    const run = async () => {
+      this.#cursor ??= await this.#user().memoryCursor(this.chatId);
+      const cursor = this.#cursor;
+      const entries = (await this.harness.session().messages()).filter((e) => Number(e.id) > cursor);
+      const items = entries.slice(0, scope === "all" ? entries.length : settledEnd(entries)).map((e) => ({
+        entryId: Number(e.id),
+        role: e.model?.[0]?.role ?? "",
+        ts: e.model?.[0]?.timestamp ?? 0,
+        rows: logRows(e),
+      }));
+      this.#cursor = await this.#user().memoryLog(this.chatId, items, answer && { ts: answer.timestamp, rows: logRows({ model: [answer] }) });
+    };
+    const next = this.#logging.then(run, run);
+    this.#logging = next;
+    return next;
   }
 
   /** Pushes user/assistant entries not yet pushed to the User DO's search index. */

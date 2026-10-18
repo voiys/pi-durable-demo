@@ -4,12 +4,15 @@ import type { Env } from "../env.ts";
 import { authorize, complete, refresh, type Connection, type Pending } from "./siwc.ts";
 
 import { createCompressor } from "../optchat/compactor.ts";
-import type { LogRow } from "../optchat/extension.ts";
+import { planLog, type Answer, type LogCursor, type LogItem } from "../optchat/cursor.ts";
 import { Memory } from "../optchat/memory.ts";
 import { sqliteStore } from "../optchat/store.ts";
 import { searchPage } from "../optchat/tools.ts";
 import { chatObjectName, DEFAULT_DEBUG, VIEW_BUDGETS, type ChatSummary, type DebugSettings, type IndexRow, type MemoryStats, type SearchHit, type UserState } from "../shared.ts";
 import { MODEL, planModels } from "./models.ts";
+
+/** The summarizer model: cheap, and checked against the plan before each call (fix plan G11). */
+const COMPACTOR = "gpt-6-luna";
 
 /**
  * One per better-auth user (name = user id). Owns the chat list (synced to the
@@ -30,19 +33,46 @@ export class User extends Agent<Env, UserState> {
   #refreshing: Promise<Connection> | null = null;
   #memory: Memory | undefined;
 
-  /** The user's one OptChat memory (DECISIONS.md: per user), in this DO's SQLite; reopened when the Debug budget changes. */
+  /** The user's one OptChat memory (DECISIONS.md: per user), in this DO's SQLite. Opened once; a budget change or a
+   * reset swaps it out (fix plan G6), so readers never get a closed instance. Summarizing runs on the user's plan, so a
+   * user without a ChatGPT connection gets the same loud error as a chat would (G7). */
   #openMemory(): Memory {
-    const { viewBytes } = this.state.debug;
-    if (this.#memory?.budget === viewBytes) return this.#memory;
-    void this.#memory?.close();
+    if (this.#memory) return this.#memory;
+    this.credential();
     const store = sqliteStore(this.ctx.storage.sql);
     const models = planModels(async () => this.credential(), (c) => this.refreshCredential(c));
-    const compress = createCompressor(() => models, () => ({ provider: MODEL.provider, model: MODEL.id, thinking: "medium" }));
-    this.#memory = new Memory({ store, saved: store.load() }, compress, console.error, viewBytes);
+    const compress = createCompressor(() => models, async () => {
+      if (!(await this.availableModels()).includes(COMPACTOR)) throw new Error(`Compactor model ${COMPACTOR} is not on this ChatGPT plan`);
+      return { provider: MODEL.provider, model: COMPACTOR, thinking: "low" };
+    });
+    // 3 summaries at once: they share the user's plan with the chat turns (G11).
+    this.#memory = new Memory({ store, saved: store.load() }, compress, console.error, this.state.debug.viewBytes, 3, 10_000, {
+      label: (e) => (e.chat ? `[chat "${this.#chatLabel(e.chat)}"] ` : ""),
+    });
     return this.#memory;
   }
 
+  /** The chat's current title as a label: no quotes or newlines; deleted chats are named as such (G1). */
+  #chatLabel(chatId: string) {
+    const row = this.sql<{ title: string }>`SELECT title FROM chats WHERE id = ${chatId}`[0];
+    return row ? row.title.replace(/["\n\r]+/g, " ") : "deleted chat";
+  }
+
+  /** Keeps summarizing alive across DO eviction: an alarm reopens the memory while work is pending (G7). */
+  #keepPumping() {
+    this.ctx.waitUntil(this.schedule(15, "pumpMemory", undefined, { idempotent: true }));
+  }
+
+  async pumpMemory() {
+    const m = this.#openMemory();
+    if (m.pending > 0 || m.active > 0) this.#keepPumping();
+  }
+
   onStart() {
+    this.sql`CREATE TABLE IF NOT EXISTS optchat_cursor (chat_id TEXT PRIMARY KEY, entry INTEGER NOT NULL, answer_ts INTEGER)`;
+    // A log with pending summaries resumes after eviction (G7).
+    const logged = this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name = 'optchat_log'").toArray().length > 0;
+    if (logged && this.#kv("siwc:connection")) this.#keepPumping();
     // State saved before the debug settings existed gets them once.
     if (!this.state.debug) this.setState({ ...this.state, debug: DEFAULT_DEBUG });
     this.sql`CREATE TABLE IF NOT EXISTS chats (id TEXT PRIMARY KEY, title TEXT NOT NULL, updated_at INTEGER NOT NULL)`;
@@ -80,6 +110,7 @@ export class User extends Agent<Env, UserState> {
   setAgents(chatId: string, agents: { name: string; session: string }[]) {
     if (!this.hasChat(chatId)) throw new Error(`Unknown chat ${chatId}`);
     this.sql`DELETE FROM chat_agents WHERE chat_id = ${chatId}`;
+    this.sql`DELETE FROM optchat_cursor WHERE chat_id = ${chatId}`;
     for (const a of agents) this.sql`INSERT INTO chat_agents (chat_id, name, session) VALUES (${chatId}, ${a.name}, ${a.session})`;
     this.#publish();
   }
@@ -99,6 +130,7 @@ export class User extends Agent<Env, UserState> {
     this.sql`DELETE FROM messages WHERE chat_id = ${chatId}`;
     this.sql`DELETE FROM indexed WHERE chat_id = ${chatId}`;
     this.sql`DELETE FROM chat_agents WHERE chat_id = ${chatId}`;
+    this.sql`DELETE FROM optchat_cursor WHERE chat_id = ${chatId}`;
     this.sql`DELETE FROM chats WHERE id = ${chatId}`;
     this.#publish();
   }
@@ -107,27 +139,55 @@ export class User extends Agent<Env, UserState> {
     return this.state.debug;
   }
 
-  setDebug(debug: DebugSettings) {
+  async setDebug(debug: DebugSettings) {
     if (!VIEW_BUDGETS.includes(debug.viewBytes as (typeof VIEW_BUDGETS)[number])) throw new Error(`Unsupported view budget ${debug.viewBytes}`);
+    const old = this.#memory;
+    this.#memory = undefined; // the next reader opens it with the new budget (G6)
     this.setState({ ...this.state, debug });
+    await old?.close();
   }
 
   // --- OptChat memory, shared by all of this user's chats ---
 
-  /** Appends a chat's finished turn, tagged with the chat (id in metadata, title in the text), then summarizes in the background. */
-  memoryLog(chatId: string, rows: LogRow[]) {
-    const chat = this.state.chats.find((c) => c.id === chatId);
-    if (!chat) throw new Error(`Unknown chat ${chatId}`);
-    const memory = this.#openMemory();
-    for (const r of rows) memory.append(r.kind, `[chat "${chat.title}"] ${r.text}`, r.date, undefined, undefined, chatId);
-    this.ctx.waitUntil(memory.settle(undefined, "tree"));
+  /** Where a chat's logging stands (its last logged entry id), so the Chat DO sends only what's new (G3). */
+  memoryCursor(chatId: string): number {
+    return this.#cursor(chatId).entry;
   }
 
-  /** The view a turn starts from, once every line in it is a summary. */
-  async memoryView() {
+  #cursor(chatId: string): LogCursor {
+    const row = this.sql<{ entry: number; answer_ts: number | null }>`SELECT entry, answer_ts FROM optchat_cursor WHERE chat_id = ${chatId}`[0];
+    return row ? { entry: row.entry, answerTs: row.answer_ts } : { entry: -1, answerTs: null };
+  }
+
+  /** Logs a chat's new entries (and an answer not committed yet) exactly once. Synchronous: one DO turn, so the rows and
+   * the cursor commit together, and concurrent calls can't interleave (G2/G3). Returns the new cursor. */
+  memoryLog(chatId: string, items: LogItem[], answer?: Answer): number {
+    if (!this.hasChat(chatId)) throw new Error(`Unknown chat ${chatId}`);
+    const plan = planLog(this.#cursor(chatId), items, answer);
     const memory = this.#openMemory();
-    await memory.settle();
-    return memory.render();
+    try {
+      for (const r of plan.rows) memory.append(r.kind, r.text, r.date, undefined, undefined, chatId);
+    } catch (e) {
+      this.#memory = undefined; // the in-RAM log may be ahead of SQLite now; reload it from storage
+      throw e;
+    }
+    this.sql`INSERT OR REPLACE INTO optchat_cursor (chat_id, entry, answer_ts) VALUES (${chatId}, ${plan.cursor.entry}, ${plan.cursor.answerTs})`;
+    if (plan.rows.length) this.#keepPumping();
+    return plan.cursor.entry;
+  }
+
+  /** The view a turn starts from, built up to the rows logged so far, so other chats' new rows never hold it up (G5).
+   * A swap (budget change, reset) while waiting retries on the new memory; any other failure surfaces. */
+  async memoryView(chatId: string): Promise<{ view: string; chat: string }> {
+    for (;;) {
+      const m = this.#openMemory();
+      try {
+        await m.settle(undefined, "turn", m.root.length);
+        return { view: m.render(), chat: this.#chatLabel(chatId) };
+      } catch (e) {
+        if (this.#memory === m) throw e;
+      }
+    }
   }
 
   memoryZoom(id: number, n: number, offset?: number, limit?: number) {
@@ -145,9 +205,11 @@ export class User extends Agent<Env, UserState> {
   /** Forgets everything: stops the compactor and drops the log, tree and view. Chats keep their transcripts; their
    * already-logged turns are not logged again, so the memory starts empty from the next turn. */
   async resetMemory() {
-    await this.#memory?.close();
+    const old = this.#memory;
     this.#memory = undefined;
+    await old?.close();
     for (const t of ["optchat_log", "optchat_tree", "optchat_view"]) this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS ${t}`);
+    this.sql`UPDATE optchat_cursor SET answer_ts = NULL`; // cursors stay: logged turns are not logged again
   }
 
   memoryStats(): MemoryStats {

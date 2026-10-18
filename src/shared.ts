@@ -19,3 +19,8 @@ export const chatObjectName = (userId: string, chatId: string) => `${userId}--${
 /** What a new chat starts with (and what the draft picker shows before the chat exists). */
 export const DEFAULT_MODEL = { id: "gpt-6.1-sol", thinkingLevel: "low" } as const;
 export type ModelOption = { id: string; name: string; levels: ModelThinkingLevel[] };
+
+/** How messages from other agents start (subagent reports, peer agents, the user's other chats). They are not the user's
+ * own words: memory logs them as "work" and the UI renders them as agent messages. */
+export const AGENT_PREFIXES = ["[subagent ", "[message from "] as const;
+export const isAgentMessage = (text: string) => AGENT_PREFIXES.some((p) => text.startsWith(p));
