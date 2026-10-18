@@ -1,6 +1,6 @@
 # pi durable demo
 
-Local-only demo: email/password accounts, each user connects their ChatGPT plan (Sign in with ChatGPT), and every chat is a pi-durable session in its own Durable Object. See PLAN.md, RESEARCH.md, DECISIONS.md, PAPERCUTS.md.
+Local-only demo: email/password accounts, each user connects their ChatGPT plan (Sign in with ChatGPT) and creates bots. A bot is one endless pi-durable conversation in its own Durable Object, with its own OptChat memory, subagents and routines. See PLAN.md, RESEARCH.md, DECISIONS.md, PAPERCUTS.md.
 
 ## Run
 
@@ -8,10 +8,11 @@ Local-only demo: email/password accounts, each user connects their ChatGPT plan 
 
 ## Slices
 
-1. Sign up / sign in, "Continue with ChatGPT", New chat, send a message, pi streams the reply.
-2. Several chats in the sidebar, click one to reopen it; log out and sign in as another user: their sidebar is empty and `/agents/*` returns 403 for the other user's objects.
-3. "Search messages" runs FTS5 bm25 over your own user + assistant messages in your User DO; a hit opens its chat.
-4. ChatGPT connection card (account, Manage usage, Disconnect) and a per-chat model + reasoning-effort picker limited to what your plan offers.
+1. Sign up / sign in, "Continue with ChatGPT", New bot (name + instructions), message it, pi streams the reply.
+2. Several bots in the rail, each its own conversation; log out and sign in as another user: their rail is empty and `/agents/*` returns 403 for the other user's objects.
+3. Search (rail) runs FTS5 bm25 over every bot's user + assistant messages in your User DO; a hit opens that bot at the message.
+4. ChatGPT connection in the account menu (Manage usage, Disconnect) and a per-bot model + reasoning-effort picker limited to what your plan offers.
+5. Bot details (click its name): instructions, subagents, routines (ask the bot "every weekday at 8 do X"), memory budget and reset, delete. Bots message each other with the `bots` tool.
 
 ## Checks
 
