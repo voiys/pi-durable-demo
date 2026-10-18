@@ -1,8 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createModels, type Models } from "@earendil-works/pi-ai/models";
-import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { createRegistry, GenerationTask, Harness, hook, ROOT_CONVERSATION_ID, type EntryRecord } from "@earendil-works/pi-durable";
 import { PiHarness, ROOT_SESSION } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
@@ -10,13 +7,9 @@ import { WebSockets } from "agents/websockets";
 import type { Env } from "../env.ts";
 import { PiSessionSockets } from "../pi/sockets.ts";
 import { agentExtensions, lastOf, sessionAgents, type AgentHost } from "./agents.ts";
-import { createCompressor } from "../optchat/compactor.ts";
-import { logEntry, optchatExtension } from "../optchat/extension.ts";
-import { Memory } from "../optchat/memory.ts";
-import { sqliteStore } from "../optchat/store.ts";
-import { MODEL, pickerOptions } from "./models.ts";
-import { oauth } from "./siwc.ts";
-import { DEFAULT_MODEL, type IndexRow, type MemoryStats, type ModelOption } from "../shared.ts";
+import { logRows, optchatExtension } from "../optchat/extension.ts";
+import { MODEL, pickerOptions, planModels } from "./models.ts";
+import { DEFAULT_MODEL, type IndexRow, type ModelOption } from "../shared.ts";
 
 const PREAMBLE = "You are a helpful, concise assistant.";
 
@@ -38,37 +31,14 @@ export class Chat extends DurableObject<Env> {
   readonly chatId = this.#name.split("--")[1];
   readonly #user = () => this.env.User.getByName(this.userId);
 
-  // pi-ai asks this for the credential on every request and refreshes it under `modify`.
-  // Refresh itself runs in the User DO (see siwc.ts `oauth`), which already persists the result.
-  readonly #credentials: CredentialStore = {
-    read: async (providerId) => (providerId === MODEL.provider ? await this.#user().credential() : undefined),
-    list: async () => [{ providerId: MODEL.provider, type: "oauth" }],
-    modify: async (providerId, fn) => fn(await this.#credentials.read(providerId)),
-    delete: async () => {
-      throw new Error("Disconnect ChatGPT from the User, not from a chat");
-    },
-  };
-
   readonly registry = createRegistry();
-  #models: Models | undefined;
-  #memory: Memory | undefined;
-  /** OptChat memory of the main agent (v1.2), opened from this DO's SQLite on first use. */
-  /** The open OptChat memory; `openMemory` must have run this isolate (it does before every turn and log). */
-  readonly memory = () => {
-    if (!this.#memory) throw new Error("OptChat memory is not open");
-    return this.#memory;
-  };
-  /** Opens the memory, or reopens it when the owner changed the view budget in the Debug section. */
-  readonly openMemory = async () => {
-    const { viewBytes } = await this.#user().debugSettings();
-    if (this.#memory?.budget === viewBytes) return this.#memory;
-    await this.#memory?.close();
-    const store = sqliteStore(this.ctx.storage.sql);
-    const compress = createCompressor(() => this.#models!, () => ({ provider: MODEL.provider, model: MODEL.id, thinking: "medium" }));
-    this.#memory = new Memory({ store, saved: store.load() }, compress, console.error, viewBytes);
-    return this.#memory;
-  };
-  readonly #optchat = optchatExtension(this.openMemory, this.memory);
+  // The main agent's OptChat memory is the owner's, shared by all their chats (User DO).
+  readonly #optchat = optchatExtension({
+    view: () => this.#user().memoryView(),
+    zoom: (id, n, offset, limit) => this.#user().memoryZoom(id, n, offset, limit),
+    date: (id) => this.#user().memoryDate(id),
+    search: (text, before) => this.#user().memorySearch(text, before),
+  });
 
   readonly harness = new PiHarness({
     harness: ({ storage, context }) => {
@@ -80,7 +50,7 @@ export class Chat extends DurableObject<Env> {
             onYield: (_answer, api) => {
               if (api.conversationId !== ROOT_CONVERSATION_ID) return;
               this.ctx.waitUntil(this.syncIndex());
-              this.logTurn();
+              this.ctx.waitUntil(this.logTurn());
             },
           }),
         ],
@@ -89,9 +59,7 @@ export class Chat extends DurableObject<Env> {
       this.registry.install(MainTools);
       this.registry.install(PeerTools);
       this.registry.install(this.#optchat); // every chat's main agent is an OptChat (DECISIONS.md)
-      const models = (this.#models = createModels({ credentials: this.#credentials }));
-      const base = openaiProvider();
-      models.setProvider({ ...base, auth: { oauth: oauth((c) => this.#user().refreshCredential(c)) } });
+      const models = planModels(() => this.#user().credential(), (c) => this.#user().refreshCredential(c));
       return Harness.open(storage, { models, registry: this.registry }, context);
     },
     defaults: { model: MODEL, thinkingLevel: DEFAULT_MODEL.thinkingLevel },
@@ -115,6 +83,8 @@ export class Chat extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     if (!this.userId || !this.chatId) throw new Error(`Chat DO needs a <userId>--<chatId> name, got "${this.#name}"`);
+    // OptChat memory moved to the User DO (DECISIONS.md); chats from before that drop their old per-chat tables.
+    for (const t of ["optchat_log", "optchat_tree", "optchat_view"]) ctx.storage.sql.exec(`DROP TABLE IF EXISTS ${t}`);
   }
 
   async onStart() {
@@ -154,20 +124,12 @@ export class Chat extends DurableObject<Env> {
     await this.ctx.storage.deleteAll();
   }
 
-  /** Live numbers for the Debug section. */
-  async memoryStats(): Promise<MemoryStats> {
-    const m = await this.openMemory();
-    return { entries: m.root.length, nodes: m.tree.size, lines: m.view.length, viewBytes: m.size, budget: m.budget, pending: m.pending, building: m.active };
-  }
-
   /** Logs the root conversation's finished turn into the OptChat memory; it summarizes in the background. */
   async logTurn() {
     const logged = (this.ctx.storage.kv.get("optchat:logged") as number | undefined) ?? 0;
     const entries = await this.harness.session().messages();
-    const memory = await this.openMemory();
-    for (const entry of entries.slice(logged)) logEntry(memory, entry);
+    await this.#user().memoryLog(this.chatId, entries.slice(logged).flatMap(logRows));
     this.ctx.storage.kv.put("optchat:logged", entries.length);
-    this.ctx.waitUntil(this.memory().settle(undefined, "tree"));
   }
 
   /** Pushes user/assistant entries not yet pushed to the User DO's search index. */

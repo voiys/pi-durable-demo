@@ -1,5 +1,5 @@
 // Lot trace: as user A, create a fresh OptChat, send one tagged message, then find the tag in every local SQLite file.
-// The tag must be exactly where the design says (A's Chat DO pi_* + optchat_*, A's User DO FTS index + title) and nowhere else.
+// The tag must be exactly where the design says (A's Chat DO pi_*, A's User DO FTS index + title + OptChat memory) and nowhere else.
 // Run: node scripts/lineage.ts (dev server up). Exit 0 = pass, 1 = fail, 2 = precondition missing (A has no ChatGPT connection).
 import assert from "node:assert/strict";
 import { finish, kindOf, openSocket, query, serverFn, signIn, sqliteFiles, userState, type Row, type Status } from "./lib.ts";
@@ -61,7 +61,7 @@ function evaluate(hits: Map<string, Map<string, number>>): Row[] {
 
   // The first user message becomes the chat title, so it lands in the User DO's chats table and agent state too.
   const allowed = (f: string, t: string) =>
-    f === aChat ? /^(pi|optchat)_/.test(t) : f === aUser ? /^messages_/.test(t) || t === "chats" || t === "cf_agents_state" : false;
+    f === aChat ? /^pi_/.test(t) : f === aUser ? /^(messages|optchat)_/.test(t) || t === "chats" || t === "cf_agents_state" : false;
   const stray = [...hits].flatMap(([f, ts]) => [...ts.keys()].filter((t) => !allowed(f, t)).map((t) => `${kindOf(f)}:${f.split("/").pop()!.slice(0, 8)}.${t}`));
   add("tag nowhere else (D1, metadata, kv, other users/chats)", !stray.length, stray.join(", ") || "none");
   if (!aChat || !aUser) return rows;
@@ -69,8 +69,8 @@ function evaluate(hits: Map<string, Map<string, number>>): Row[] {
   const c = hits.get(aChat)!;
   const u = hits.get(aUser) ?? new Map<string, number>();
   add("Chat DO pi_entries: user + assistant", (c.get("pi_entries") ?? 0) >= 2, `${c.get("pi_entries") ?? 0} row(s)`);
-  add("Chat DO optchat_log", (c.get("optchat_log") ?? 0) >= 1, `${c.get("optchat_log") ?? 0} row(s)`);
-  add("Chat DO optchat_tree (background compaction)", (c.get("optchat_tree") ?? 0) >= 1, `${c.get("optchat_tree") ?? 0} row(s)`, "PENDING");
+  add("User DO optchat_log (the user's one memory)", (u.get("optchat_log") ?? 0) >= 1, `${u.get("optchat_log") ?? 0} row(s)`);
+  add("User DO optchat_tree (background compaction)", (u.get("optchat_tree") ?? 0) >= 1, `${u.get("optchat_tree") ?? 0} row(s)`, "PENDING");
   add("User DO messages FTS: user + assistant", (u.get("messages_content") ?? 0) >= 2, `${u.get("messages_content") ?? 0} row(s)`);
   // `indexed` holds only (chat_id, entry_id), so match it against the entry ids of the tagged FTS rows.
   const ids = query<{ c2: string }>(aUser, "SELECT c2 FROM messages_content WHERE c1 = ? AND c0 LIKE ?", chat.id, `%${tag}%`).map((r) => r.c2);

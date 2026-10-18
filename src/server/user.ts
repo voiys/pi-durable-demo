@@ -3,7 +3,13 @@ import { Agent } from "agents";
 import type { Env } from "../env.ts";
 import { authorize, complete, refresh, type Connection, type Pending } from "./siwc.ts";
 
-import { chatObjectName, DEFAULT_DEBUG, VIEW_BUDGETS, type ChatSummary, type DebugSettings, type IndexRow, type SearchHit, type UserState } from "../shared.ts";
+import { createCompressor } from "../optchat/compactor.ts";
+import type { LogRow } from "../optchat/extension.ts";
+import { Memory } from "../optchat/memory.ts";
+import { sqliteStore } from "../optchat/store.ts";
+import { searchPage } from "../optchat/tools.ts";
+import { chatObjectName, DEFAULT_DEBUG, VIEW_BUDGETS, type ChatSummary, type DebugSettings, type IndexRow, type MemoryStats, type SearchHit, type UserState } from "../shared.ts";
+import { MODEL, planModels } from "./models.ts";
 
 /**
  * One per better-auth user (name = user id). Owns the chat list (synced to the
@@ -14,6 +20,19 @@ import { chatObjectName, DEFAULT_DEBUG, VIEW_BUDGETS, type ChatSummary, type Deb
 export class User extends Agent<Env, UserState> {
   initialState: UserState = { chats: [], chatgpt: null, debug: DEFAULT_DEBUG };
   #refreshing: Promise<Connection> | null = null;
+  #memory: Memory | undefined;
+
+  /** The user's one OptChat memory (DECISIONS.md: per user), in this DO's SQLite; reopened when the Debug budget changes. */
+  #openMemory(): Memory {
+    const { viewBytes } = this.state.debug;
+    if (this.#memory?.budget === viewBytes) return this.#memory;
+    void this.#memory?.close();
+    const store = sqliteStore(this.ctx.storage.sql);
+    const models = planModels(async () => this.credential(), (c) => this.refreshCredential(c));
+    const compress = createCompressor(() => models, () => ({ provider: MODEL.provider, model: MODEL.id, thinking: "medium" }));
+    this.#memory = new Memory({ store, saved: store.load() }, compress, console.error, viewBytes);
+    return this.#memory;
+  }
 
   onStart() {
     // State saved before the debug settings existed gets them once.
@@ -83,6 +102,41 @@ export class User extends Agent<Env, UserState> {
   setDebug(debug: DebugSettings) {
     if (!VIEW_BUDGETS.includes(debug.viewBytes as (typeof VIEW_BUDGETS)[number])) throw new Error(`Unsupported view budget ${debug.viewBytes}`);
     this.setState({ ...this.state, debug });
+  }
+
+  // --- OptChat memory, shared by all of this user's chats ---
+
+  /** Appends a chat's finished turn, tagged with the chat (id in metadata, title in the text), then summarizes in the background. */
+  memoryLog(chatId: string, rows: LogRow[]) {
+    const chat = this.state.chats.find((c) => c.id === chatId);
+    if (!chat) throw new Error(`Unknown chat ${chatId}`);
+    const memory = this.#openMemory();
+    for (const r of rows) memory.append(r.kind, `[chat: ${chat.title}] ${r.text}`, r.date, undefined, undefined, chatId);
+    this.ctx.waitUntil(memory.settle(undefined, "tree"));
+  }
+
+  /** The view a turn starts from, once every line in it is a summary. */
+  async memoryView() {
+    const memory = this.#openMemory();
+    await memory.settle();
+    return memory.render();
+  }
+
+  memoryZoom(id: number, n: number, offset?: number, limit?: number) {
+    return this.#openMemory().zoom(id, n, offset, limit);
+  }
+
+  memoryDate(id: number) {
+    return this.#openMemory().date(id);
+  }
+
+  memorySearch(text: string, before?: number) {
+    return searchPage(this.#openMemory(), text, before);
+  }
+
+  memoryStats(): MemoryStats {
+    const m = this.#openMemory();
+    return { entries: m.root.length, nodes: m.tree.size, lines: m.view.length, viewBytes: m.size, budget: m.budget, pending: m.pending, building: m.active };
   }
 
   hasChat(chatId: string) {

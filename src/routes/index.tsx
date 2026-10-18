@@ -107,7 +107,7 @@ function App() {
               ))}
             </SidebarMenu>
           </SidebarGroup>
-          {state && <DebugSection debug={state.debug} chatId={chat} />}
+          {state && <DebugSection debug={state.debug} />}
         </SidebarContent>
         <SidebarFooter>
           {state && <NavUser user={user} chatgpt={state.chatgpt} />}

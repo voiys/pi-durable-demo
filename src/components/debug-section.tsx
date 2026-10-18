@@ -9,17 +9,17 @@ import { VIEW_BUDGETS, type DebugSettings, type MemoryStats } from "@/shared";
 
 const kb = (n: number) => `${Math.round(n / 1000)}K`;
 
-/** Inline sidebar section: per-user debug knobs (applied to every chat) and the open chat's OptChat memory, live. */
-export function DebugSection({ debug, chatId }: { debug: DebugSettings; chatId?: string }) {
+/** Inline sidebar section: per-user debug knobs and the user's OptChat memory (shared by every chat), live. */
+export function DebugSection({ debug }: { debug: DebugSettings }) {
   const [open, setOpen] = useState(false);
   const [stats, setStats] = useState<MemoryStats | null>(null);
   useEffect(() => {
-    if (!open || !chatId) return setStats(null);
-    const poll = () => memoryStats({ data: chatId }).then(setStats, (e: Error) => toast.error("Couldn't read memory stats", { description: e.message }));
+    if (!open) return setStats(null);
+    const poll = () => memoryStats().then(setStats, (e: Error) => toast.error("Couldn't read memory stats", { description: e.message }));
     void poll();
     const t = setInterval(poll, 2000);
     return () => clearInterval(t);
-  }, [open, chatId]);
+  }, [open]);
   const step = VIEW_BUDGETS.findIndex((b) => b === debug.viewBytes);
 
   return (
@@ -49,7 +49,7 @@ export function DebugSection({ debug, chatId }: { debug: DebugSettings; chatId?:
               />
               <p className="text-muted-foreground">All your chats. Lower it to watch older lines merge after a few messages.</p>
             </div>
-            {chatId && stats && (
+            {stats && (
               <dl className="text-muted-foreground grid grid-cols-2 gap-x-2 gap-y-1 tabular-nums">
                 <dt>Log entries</dt>
                 <dd className="text-foreground text-right">{stats.entries}</dd>

@@ -19,7 +19,7 @@ const loc = (h: { file: string; n: number }) => `${h.file.replace(/^src\//, "")}
 const locs = (hs: { file: string; n: number }[]) => (hs.length ? hs.map(loc).join(", ") : "-");
 
 // Which DO object each source file belongs to (the one class file that owns the storage it touches).
-const OBJECT_OF_FILE: Record<string, string> = { "src/server/user.ts": "User", "src/server/chat.ts": "Chat", "src/optchat/store.ts": "Chat" };
+const OBJECT_OF_FILE: Record<string, string> = { "src/server/user.ts": "User", "src/server/chat.ts": "Chat", "src/optchat/store.ts": "User" };
 const objectOf = (file: string) => OBJECT_OF_FILE[file] ?? assert(false, `${file} touches storage/RPC but is not attributed to an object`);
 // Caller label (and mermaid node) per file for RPC edges.
 const CALLER_OF = (file: string) =>

@@ -24,9 +24,7 @@ export const searchMessages = createServerFn({ method: "GET" })
 export const setDebug = createServerFn({ method: "POST" })
   .validator((d: { viewBytes: number }) => d)
   .handler(async ({ data }) => (await user()).setDebug(data));
-export const memoryStats = createServerFn({ method: "GET" })
-  .validator((chatId: string) => chatId)
-  .handler(async ({ data }): Promise<MemoryStats> => ({ ...(await (await chat(data)).memoryStats()) }));
+export const memoryStats = createServerFn({ method: "GET" }).handler(async (): Promise<MemoryStats> => ({ ...(await (await user()).memoryStats()) }));
 export const renameChat = createServerFn({ method: "POST" })
   .validator((d: { chatId: string; title: string }) => d)
   .handler(async ({ data }) => env.User.getByName(await owner(data.chatId)).renameChat(data.chatId, data.title));
