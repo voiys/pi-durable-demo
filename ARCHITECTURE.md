@@ -13,23 +13,34 @@ flowchart LR
   Auth["better-auth<br/>src/server/auth.ts"]
   User[("User DO<br/>one per user")]
   Bot[("Bot DO<br/>one per bot")]
+  BotData[("BotData DO<br/>one per bot, RPC only")]
+  Group[("Group DO<br/>one per group")]
   D1[("D1<br/>auth tables")]
+  Searxng[["SearXNG<br/>Docker pi-durable-searxng"]]
   Browser -->|"WebSocket /agents/*"| Gate
   Browser -->|"RPC over HTTP"| Fns
   Browser -->|"pages, auth"| Routes
-  Gate -->|"routeAgentRequest bot"| Bot
   Gate -->|"routeAgentRequest user"| User
+  Gate -->|"routeAgentRequest bot"| Bot
+  Gate -->|"routeAgentRequest group"| Group
   Gate --> Auth
   Fns --> Auth
   Routes --> Auth
   Auth -->|SQL| D1
+  Bot -->|"HTTP /search"| Searxng
   Routes -->|"completeConnect"| User
   Bot -->|"lastAnswer, receive"| Bot
   Bot -->|"availableModels, credential, indexMessages, listBots, refreshCredential, setAgents"| User
-  Fns -->|"availableModels, beginConnect, createBot, deleteBot, disconnect, hasBot, search, updateBot"| User
+  Bot -->|"library, report, saveReport, schema, sql, tables"| BotData
+  Bot -->|"botReply"| Group
+  Fns -->|"availableModels, beginConnect, createBot, createGroup, deleteBot, disbandGroup, disconnect, hasBot, hasGroup, search, setMainBot, updateBot"| User
   Fns -->|"configureModel, deleteRoutine, details, resetMemory, retireSubagent, setMemoryBudget, setRoutineEnabled"| Bot
-  User -->|"setProfile, wipe"| Bot
-  Gate -->|"hasBot"| User
+  Fns -->|"userPost"| Group
+  Fns -->|"deleteReport, report"| BotData
+  Group -->|"receiveGroup"| Bot
+  User -->|"wipe"| Bot
+  User -->|"wipe"| BotData
+  User -->|"init, wipe"| Group
 ```
 
 ## Objects
@@ -38,12 +49,23 @@ flowchart LR
 |---|---|---|---|---|
 | `DB` | D1.Database | - | - | shared by all users, better-auth tables only |
 | `BETTER_AUTH_SECRET` | secret (.env) | - | - | Worker env |
+| `SEARXNG_URL` | plain var | - | - | Worker env |
 | `User` | Durable Object | User extends Agent (src/server/user.ts) | user id | one instance per user |
 | `Bot` | Durable Object | Bot extends DurableObject + Lifecycle + PiHarness (src/server/bot.ts) | `<userId>--<botId>` | one instance per bot in the user's User catalog |
+| `BotData` | Durable Object | BotData extends DurableObject (src/server/bot-data.ts) | `<userId>--<botId>` | one instance per bot, same name as its Bot; RPC only, no /agents door |
+| `Group` | Durable Object | Group extends Agent (src/server/group.ts) | `<userId>--<groupId>` | one instance per group in the user's User catalog |
+
+## Containers
+
+Docker resources of the alchemy stack (not Worker bindings); the Worker reaches them over a plain-var URL.
+
+| Resource | Container | Image | Port (host -> container) | Used by |
+|---|---|---|---|---|
+| `Searxng` | pi-durable-searxng | searxng/searxng:2026.10.4-d48c4b555 | 8888 -> 8080 | server/bot.ts:93 |
 
 ## Storage
 
-Scope: `user`/`bot` = per User/Bot instance, `shared` = D1, `agent` = agents SDK runtime state, `runtime` = workerd.
+Scope: `user`/`bot`/`group` = per User/Bot/Group instance, `shared` = D1, `agent` = agents SDK runtime state, `runtime` = workerd.
 
 | Object | Table / kv key | Source | Owner scope | Writers | Readers | In SQLite |
 |---|---|---|---|---|---|---|
@@ -53,67 +75,90 @@ Scope: `user`/`bot` = per User/Bot instance, `shared` = D1, `agent` = agents SDK
 | D1 | `verification` | code: migrations/0001_better_auth.sql:7 | shared | better-auth (server/auth.ts) | better-auth (server/auth.ts) | yes |
 | D1 | `__alchemy_migrations` | library: alchemy | shared | alchemy | alchemy | yes |
 | D1 | `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
-| User | `bots` | code: server/user.ts:17 | user | server/user.ts:50, server/user.ts:81, server/user.ts:83, server/user.ts:103, server/user.ts:115 | server/user.ts:24, server/user.ts:42, server/user.ts:49, server/user.ts:67, server/user.ts:127 | yes |
-| User | `bot_agents` | code: server/user.ts:18 | user | server/user.ts:91, server/user.ts:92, server/user.ts:102 | server/user.ts:25 | yes |
-| User | `indexed` | code: server/user.ts:19 | user | server/user.ts:101, server/user.ts:112 | - | yes |
-| User | `messages` (FTS5) | code: server/user.ts:20 | user | server/user.ts:100, server/user.ts:113 | server/user.ts:127 | yes |
-| User | kv `siwc:connection` | code: server/user.ts:146 | user | server/user.ts:156, server/user.ts:161, server/user.ts:202 | server/user.ts:146, server/user.ts:168, server/user.ts:196 | n/a |
-| User | kv `siwc:host` | code: server/user.ts:140 | user | server/user.ts:141 | server/user.ts:140 | n/a |
-| User | kv `siwc:models` | code: server/user.ts:162 | user | server/user.ts:162, server/user.ts:189 | server/user.ts:175 | n/a |
-| User | kv `siwc:pending` | code: server/user.ts:147 | user | server/user.ts:147, server/user.ts:154 | server/user.ts:152 | n/a |
+| User | `bots` | code: server/user.ts:17 | user | server/user.ts:53, server/user.ts:107, server/user.ts:109, server/user.ts:133, server/user.ts:170 | server/user.ts:25, server/user.ts:45, server/user.ts:52, server/user.ts:73, server/user.ts:182 | yes |
+| User | `groups` | code: server/user.ts:18 | user | server/user.ts:145, server/user.ts:158 | server/user.ts:27, server/user.ts:151 | yes |
+| User | `bot_agents` | code: server/user.ts:19 | user | server/user.ts:117, server/user.ts:118, server/user.ts:132 | server/user.ts:26 | yes |
+| User | `indexed` | code: server/user.ts:20 | user | server/user.ts:131, server/user.ts:167 | - | yes |
+| User | `messages` (FTS5) | code: server/user.ts:21 | user | server/user.ts:130, server/user.ts:168 | server/user.ts:182 | yes |
+| User | kv `siwc:connection` | code: server/user.ts:201 | user | server/user.ts:211, server/user.ts:216, server/user.ts:257 | server/user.ts:201, server/user.ts:223, server/user.ts:251 | n/a |
+| User | kv `siwc:host` | code: server/user.ts:195 | user | server/user.ts:196 | server/user.ts:195 | n/a |
+| User | kv `siwc:models` | code: server/user.ts:217 | user | server/user.ts:217, server/user.ts:244 | server/user.ts:230 | n/a |
+| User | kv `siwc:pending` | code: server/user.ts:202 | user | server/user.ts:202, server/user.ts:209 | server/user.ts:207 | n/a |
 | User | `messages_config`, `messages_content`, `messages_data`, `messages_docsize`, `messages_idx` | library: FTS5 shadow tables of `messages` | user | FTS5 shadow tables of `messages` | FTS5 shadow tables of `messages` | yes |
 | User | `cf_agent_tool_runs`, `cf_agents_facet_runs`, `cf_agents_fibers`, `cf_agents_jobs`, `cf_agents_mcp_servers`, `cf_agents_runs`, `cf_agents_state`, `cf_agents_task_runs`, `cf_agents_task_steps`, `cf_agents_workflows` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | User | `_cf_KV`, `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
 | Bot | `optchat_log` | code: optchat/store.ts:6 | bot | optchat/store.ts:17 | optchat/store.ts:11 | yes |
 | Bot | `optchat_tree` | code: optchat/store.ts:7 | bot | optchat/store.ts:21 | optchat/store.ts:12 | yes |
 | Bot | `optchat_view` | code: optchat/store.ts:8 | bot | optchat/store.ts:25 | optchat/store.ts:13 | yes |
-| Bot | `routines` | code: server/bot.ts:115 | bot | server/bot.ts:279, server/bot.ts:287, server/bot.ts:300, server/bot.ts:307 | server/bot.ts:272, server/bot.ts:292 | yes |
-| Bot | kv `bot:profile` | code: server/bot.ts:127 | bot | server/bot.ts:139 | server/bot.ts:127 | n/a |
-| Bot | kv `index:sent` | code: server/bot.ts:360 | bot | server/bot.ts:368 | server/bot.ts:360 | n/a |
-| Bot | kv `memory:budget` | code: server/bot.ts:193 | bot | server/bot.ts:251 | server/bot.ts:193 | n/a |
-| Bot | kv `optchat:cursor` | code: server/bot.ts:220 | bot | server/bot.ts:236, server/bot.ts:265 | server/bot.ts:220, server/bot.ts:264 | n/a |
+| Bot | `routines` | code: server/bot.ts:121 | bot | server/bot.ts:385, server/bot.ts:393, server/bot.ts:406, server/bot.ts:413 | server/bot.ts:378, server/bot.ts:398 | yes |
+| Bot | kv `bot:main` | code: server/bot.ts:140 | bot | server/bot.ts:149 | server/bot.ts:140 | n/a |
+| Bot | kv `bot:profile` | code: server/bot.ts:133 | bot | server/bot.ts:196 | server/bot.ts:133 | n/a |
+| Bot | kv `index:sent` | code: server/bot.ts:512 | bot | server/bot.ts:520 | server/bot.ts:512 | n/a |
+| Bot | kv `memory:budget` | code: server/bot.ts:299 | bot | server/bot.ts:357 | server/bot.ts:299 | n/a |
+| Bot | kv `optchat:cursor` | code: server/bot.ts:326 | bot | server/bot.ts:342, server/bot.ts:371 | server/bot.ts:326, server/bot.ts:370 | n/a |
 | Bot | `cf_agents_jobs` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | Bot | `pi_conversations`, `pi_document_revisions`, `pi_documents`, `pi_durable_metadata`, `pi_durable_schema`, `pi_entries`, `pi_record_ids`, `pi_submissions`, `pi_tasks` | library: pi-durable (PiHarness) | bot | pi-durable (PiHarness) | pi-durable (PiHarness) | yes |
 | Bot | `_cf_KV`, `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
+| BotData | `library` | code: server/bot-data.ts:24 | bot | server/bot-data.ts:53, server/bot-data.ts:68 | server/bot-data.ts:58, server/bot-data.ts:62 | yes |
+| BotData | (any) | library: tables the bot creates with its `sql` tool | bot | tables the bot creates with its `sql` tool | tables the bot creates with its `sql` tool | yes |
+| Group | `cf_agent_tool_runs`, `cf_agents_facet_runs`, `cf_agents_fibers`, `cf_agents_jobs`, `cf_agents_mcp_servers`, `cf_agents_runs`, `cf_agents_state`, `cf_agents_task_runs`, `cf_agents_task_steps`, `cf_agents_workflows` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
+| Group | `_cf_KV` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
 
 ## RPC edges
 
 | From | To | Method | file:line |
 |---|---|---|---|
-| Bot | Bot | `lastAnswer` | src/server/bot.ts:103 |
-| Bot | Bot | `receive` | src/server/bot.ts:102 |
-| Bot | User | `availableModels` | src/server/bot.ts:146, src/server/bot.ts:184 |
-| Bot | User | `credential` | src/server/bot.ts:91, src/server/bot.ts:182 |
-| Bot | User | `indexMessages` | src/server/bot.ts:367 |
-| Bot | User | `listBots` | src/server/bot.ts:101 |
-| Bot | User | `refreshCredential` | src/server/bot.ts:91, src/server/bot.ts:182 |
-| Bot | User | `setAgents` | src/server/bot.ts:106 |
-| Server fns | Bot | `configureModel` | src/server/fns.ts:37 |
-| Server fns | Bot | `deleteRoutine` | src/server/fns.ts:55 |
-| Server fns | Bot | `details` | src/server/fns.ts:41 |
-| Server fns | Bot | `resetMemory` | src/server/fns.ts:49 |
-| Server fns | Bot | `retireSubagent` | src/server/fns.ts:58 |
-| Server fns | Bot | `setMemoryBudget` | src/server/fns.ts:46 |
-| Server fns | Bot | `setRoutineEnabled` | src/server/fns.ts:52 |
+| Bot | BotData | `library` | src/server/bot.ts:482, src/server/bot.ts:495 |
+| Bot | BotData | `report` | src/server/bot.ts:483 |
+| Bot | BotData | `saveReport` | src/server/bot.ts:485 |
+| Bot | BotData | `schema` | src/server/bot.ts:464 |
+| Bot | BotData | `sql` | src/server/bot.ts:466 |
+| Bot | BotData | `tables` | src/server/bot.ts:495 |
+| Bot | Bot | `lastAnswer` | src/server/bot.ts:109 |
+| Bot | Bot | `receive` | src/server/bot.ts:108 |
+| Bot | Group | `botReply` | src/server/bot.ts:276 |
+| Bot | User | `availableModels` | src/server/bot.ts:203, src/server/bot.ts:290 |
+| Bot | User | `credential` | src/server/bot.ts:97, src/server/bot.ts:288 |
+| Bot | User | `indexMessages` | src/server/bot.ts:519 |
+| Bot | User | `listBots` | src/server/bot.ts:107 |
+| Bot | User | `refreshCredential` | src/server/bot.ts:97, src/server/bot.ts:288 |
+| Bot | User | `setAgents` | src/server/bot.ts:112 |
+| Group | Bot | `receiveGroup` | src/server/group.ts:43 |
+| Server fns | BotData | `deleteReport` | src/server/fns.ts:53 |
+| Server fns | BotData | `report` | src/server/fns.ts:50 |
+| Server fns | Bot | `configureModel` | src/server/fns.ts:40 |
+| Server fns | Bot | `deleteRoutine` | src/server/fns.ts:65 |
+| Server fns | Bot | `details` | src/server/fns.ts:44 |
+| Server fns | Bot | `resetMemory` | src/server/fns.ts:59 |
+| Server fns | Bot | `retireSubagent` | src/server/fns.ts:68 |
+| Server fns | Bot | `setMemoryBudget` | src/server/fns.ts:56 |
+| Server fns | Bot | `setRoutineEnabled` | src/server/fns.ts:62 |
+| Server fns | Group | `userPost` | src/server/fns.ts:85 |
 | Server fns | User | `availableModels` | src/server/fns.ts:24 |
 | Server fns | User | `beginConnect` | src/server/fns.ts:18 |
 | Server fns | User | `createBot` | src/server/fns.ts:28 |
-| Server fns | User | `deleteBot` | src/server/fns.ts:34 |
+| Server fns | User | `createGroup` | src/server/fns.ts:81 |
+| Server fns | User | `deleteBot` | src/server/fns.ts:37 |
+| Server fns | User | `disbandGroup` | src/server/fns.ts:88 |
 | Server fns | User | `disconnect` | src/server/fns.ts:19 |
 | Server fns | User | `hasBot` | src/server/fns.ts:12 |
+| Server fns | User | `hasGroup` | src/server/fns.ts:73 |
 | Server fns | User | `search` | src/server/fns.ts:22 |
+| Server fns | User | `setMainBot` | src/server/fns.ts:34 |
 | Server fns | User | `updateBot` | src/server/fns.ts:31 |
-| User | Bot | `setProfile` | src/server/user.ts:73 |
-| User | Bot | `wipe` | src/server/user.ts:99 |
-| Worker gate | User | `hasBot` | src/worker.ts:24 |
+| User | BotData | `wipe` | src/server/user.ts:129 |
+| User | Bot | `wipe` | src/server/user.ts:128 |
+| User | Group | `init` | src/server/user.ts:144 |
+| User | Group | `wipe` | src/server/user.ts:157 |
 | Worker route | User | `completeConnect` | src/routes/auth.callback.ts:11 |
 
 ## Routes
 
 | Path | Auth rule |
 |---|---|
-| `/agents/bot/:name` | 401 without session; 404 unless exactly `/agents/bot/:name`; 403 unless `name` is `<callerId>--<botId>` and `User.hasBot(botId)` |
 | `/agents/user/:name` | 401 without session; 404 unless exactly `/agents/user/:name`; 403 unless `name` is the caller's id |
+| `/agents/bot/:name` | 401 without session; 404 unless exactly `/agents/bot/:name`; 403 unless `name` is `<callerId>--<botId>` and `User.hasBot(botId)` |
+| `/agents/group/:name` | 401 without session; 404 unless exactly `/agents/group/:name`; 403 unless `name` is `<callerId>--<groupId>` and `User.hasGroup(groupId)` |
 | `everything else` | TanStack Start handler (rule per route below) |
 | `/api/auth/*` | better-auth handler (sign-in/up are public) |
 | `/auth/callback` | `requireUser`: 401 without session |
@@ -126,11 +171,17 @@ Scope: `user`/`bot` = per User/Bot instance, `shared` = D1, `agent` = agents SDK
 | `serverFn modelOptions (GET)` | `requireUser` |
 | `serverFn createBot (POST)` | `requireUser` |
 | `serverFn updateBot (POST)` | `requireUser` + `User.hasBot` |
+| `serverFn setMainBot (POST)` | `requireUser` + `User.hasBot` |
 | `serverFn deleteBot (POST)` | `requireUser` + `User.hasBot` |
 | `serverFn setBotModel (POST)` | `requireUser` + `User.hasBot` |
 | `serverFn botDetails (GET)` | `requireUser` + `User.hasBot` |
+| `serverFn readReport (GET)` | `requireUser` + `User.hasBot` |
+| `serverFn deleteReport (POST)` | `requireUser` + `User.hasBot` |
 | `serverFn setMemoryBudget (POST)` | `requireUser` + `User.hasBot` |
 | `serverFn resetMemory (POST)` | `requireUser` + `User.hasBot` |
 | `serverFn setRoutineEnabled (POST)` | `requireUser` + `User.hasBot` |
 | `serverFn deleteRoutine (POST)` | `requireUser` + `User.hasBot` |
 | `serverFn retireSubagent (POST)` | `requireUser` + `User.hasBot` |
+| `serverFn createGroup (POST)` | `requireUser` + `User.hasBot` |
+| `serverFn postToGroup (POST)` | `requireUser` + `User.hasGroup` |
+| `serverFn disbandGroup (POST)` | `requireUser` + `User.hasGroup` |

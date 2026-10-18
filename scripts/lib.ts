@@ -59,12 +59,13 @@ async function fnId(name: string) {
   assert.ok(m, `server fn ${name} not found in the dev client module`);
   return m[1];
 }
-// seroval wire format of `{ data }`, only for the value shapes these fns take (undefined, boolean, number, string, flat object).
+// seroval wire format of `{ data }`, only for the value shapes these fns take (undefined, boolean, number, string, array, flat object).
 const enc = (v: unknown, i = { n: 0 }): unknown =>
   v === undefined ? { t: 2, s: 1 }
   : typeof v === "boolean" ? { t: 2, s: v ? 2 : 3 }
   : typeof v === "number" ? { t: 0, s: v }
   : typeof v === "string" ? { t: 1, s: v }
+  : Array.isArray(v) ? { t: 9, i: ++i.n, a: v.map((x) => enc(x, i)), o: 0 }
   : { t: 10, i: ++i.n, p: { k: Object.keys(v as object), v: Object.values(v as object).map((x) => enc(x, i)) }, o: 0 };
 const payload = (data: unknown) => JSON.stringify({ t: { t: 10, i: 0, p: { k: ["data"], v: [enc(data)] }, o: 0 }, f: 127, m: [] });
 
@@ -94,10 +95,10 @@ export async function deleteBot(who: Actor, botId: string) {
 
 // ---- local SQLite (read-only) ----
 export const LOCAL = `${ROOT}.alchemy/local`;
-export type Kind = "User" | "Bot" | "D1" | "metadata" | "other";
-/** DO/D1 files are named by id hash; metadata.sqlite is workerd bookkeeping. */
+export type Kind = "User" | "Bot" | "BotData" | "Group" | "D1" | "metadata" | "other";
+/** DO/D1 files are named by id hash; metadata.sqlite is workerd bookkeeping. Class dirs end in `-<Class>/`, so `-Bot/` never matches `-BotData/`. */
 export const kindOf = (file: string): Kind =>
-  file.endsWith("/metadata.sqlite") ? "metadata" : file.includes("-User/") ? "User" : file.includes("-Bot/") ? "Bot" : file.includes("/d1/") ? "D1" : "other";
+  file.endsWith("/metadata.sqlite") ? "metadata" : file.includes("-User/") ? "User" : file.includes("-Bot/") ? "Bot" : file.includes("-BotData/") ? "BotData" : file.includes("-Group/") ? "Group" : file.includes("/d1/") ? "D1" : "other";
 export const sqliteFiles = (dir = LOCAL): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? sqliteFiles(join(dir, e.name)) : e.name.endsWith(".sqlite") ? [join(dir, e.name)] : [])).sort();
 

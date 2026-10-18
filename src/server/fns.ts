@@ -75,7 +75,11 @@ const group = async (groupId: string) => {
 };
 export const createGroup = createServerFn({ method: "POST" })
   .validator((d: { title: string; botIds: string[] }) => d)
-  .handler(async ({ data }) => ({ id: await (await user()).createGroup(data.title, data.botIds) }));
+  .handler(async ({ data }) => {
+    // Every member must be the caller's own bot (403 otherwise), like every other bot-scoped call.
+    for (const botId of data.botIds) await owner(botId);
+    return { id: await (await user()).createGroup(data.title, data.botIds) };
+  });
 export const postToGroup = createServerFn({ method: "POST" })
   .validator((d: { groupId: string; text: string }) => d)
   .handler(async ({ data }) => (await group(data.groupId)).room.userPost(data.text));
