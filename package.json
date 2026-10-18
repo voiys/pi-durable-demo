@@ -7,7 +7,8 @@
     "dev": "alchemy dev",
     "typecheck": "tsc --noEmit",
     "check:optchat-upstream": "node --experimental-transform-types --no-warnings scripts/optchat-upstream.ts",
-    "check:optchat-spec": "node --experimental-transform-types --no-warnings --test --test-reporter=spec scripts/optchat-spec.ts"
+    "check:optchat-spec": "node --experimental-transform-types --no-warnings --test --test-reporter=spec scripts/optchat-spec.ts",
+    "check:optchat-e2e": "node --experimental-transform-types --no-warnings scripts/optchat-e2e.ts"
   },
   "dependencies": {
     "@alchemy.run/frontend-frameworks": "2.0.0-beta.83",

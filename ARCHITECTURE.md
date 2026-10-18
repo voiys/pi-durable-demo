@@ -25,7 +25,7 @@ flowchart LR
   Auth -->|SQL| D1
   Routes -->|"completeConnect"| User
   Chat -->|"lastAnswer, receive"| Chat
-  Chat -->|"availableModels, credential, indexMessages, listChats, memoryDate, memoryLog, memorySearch, memoryView, memoryZoom, refreshCredential, setAgents"| User
+  Chat -->|"availableModels, credential, indexMessages, listChats, memoryCursor, memoryDate, memoryLog, memorySearch, memoryView, memoryZoom, refreshCredential, setAgents"| User
   Fns -->|"availableModels, beginConnect, createChat, deleteChat, disconnect, hasChat, memoryStats, renameChat, resetMemory, search, setDebug"| User
   Fns -->|"configureModel, retireSubagent"| Chat
   User -->|"wipe"| Chat
@@ -56,19 +56,19 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | User | `optchat_log` | code: optchat/store.ts:6 | user | optchat/store.ts:17 | optchat/store.ts:11 | yes |
 | User | `optchat_tree` | code: optchat/store.ts:7 | user | optchat/store.ts:21 | optchat/store.ts:12 | yes |
 | User | `optchat_view` | code: optchat/store.ts:8 | user | optchat/store.ts:25 | optchat/store.ts:13 | yes |
-| User | `chats` | code: server/user.ts:48 | user | server/user.ts:70, server/user.ts:91, server/user.ts:102, server/user.ts:171, server/user.ts:172 | server/user.ts:55, server/user.ts:159, server/user.ts:184 | yes |
-| User | `chat_agents` | code: server/user.ts:49 | user | server/user.ts:82, server/user.ts:83, server/user.ts:101 | server/user.ts:56 | yes |
-| User | `indexed` | code: server/user.ts:50 | user | server/user.ts:100, server/user.ts:167 | - | yes |
-| User | `messages` (FTS5) | code: server/user.ts:51 | user | server/user.ts:99, server/user.ts:168 | server/user.ts:184 | yes |
-| User | kv `siwc:connection` | code: server/user.ts:203 | user | server/user.ts:213, server/user.ts:218, server/user.ts:259 | server/user.ts:203, server/user.ts:225, server/user.ts:253 | n/a |
-| User | kv `siwc:host` | code: server/user.ts:197 | user | server/user.ts:198 | server/user.ts:197 | n/a |
-| User | kv `siwc:models` | code: server/user.ts:219 | user | server/user.ts:219, server/user.ts:246 | server/user.ts:232 | n/a |
-| User | kv `siwc:pending` | code: server/user.ts:204 | user | server/user.ts:204, server/user.ts:211 | server/user.ts:209 | n/a |
+| User | `optchat_cursor` | code: server/user.ts:72 | user | server/user.ts:113, server/user.ts:133, server/user.ts:174, server/user.ts:212 | server/user.ts:158 | yes |
+| User | `chats` | code: server/user.ts:78 | user | server/user.ts:100, server/user.ts:122, server/user.ts:134, server/user.ts:233, server/user.ts:234 | server/user.ts:57, server/user.ts:85, server/user.ts:221, server/user.ts:246 | yes |
+| User | `chat_agents` | code: server/user.ts:79 | user | server/user.ts:112, server/user.ts:114, server/user.ts:132 | server/user.ts:86 | yes |
+| User | `indexed` | code: server/user.ts:80 | user | server/user.ts:131, server/user.ts:229 | - | yes |
+| User | `messages` (FTS5) | code: server/user.ts:81 | user | server/user.ts:130, server/user.ts:230 | server/user.ts:246 | yes |
+| User | kv `siwc:connection` | code: server/user.ts:265 | user | server/user.ts:275, server/user.ts:280, server/user.ts:321 | server/user.ts:265, server/user.ts:287, server/user.ts:315 | n/a |
+| User | kv `siwc:host` | code: server/user.ts:259 | user | server/user.ts:260 | server/user.ts:259 | n/a |
+| User | kv `siwc:models` | code: server/user.ts:281 | user | server/user.ts:281, server/user.ts:308 | server/user.ts:294 | n/a |
+| User | kv `siwc:pending` | code: server/user.ts:266 | user | server/user.ts:266, server/user.ts:273 | server/user.ts:271 | n/a |
 | User | `messages_config`, `messages_content`, `messages_data`, `messages_docsize`, `messages_idx` | library: FTS5 shadow tables of `messages` | user | FTS5 shadow tables of `messages` | FTS5 shadow tables of `messages` | yes |
 | User | `cf_agent_tool_runs`, `cf_agents_facet_runs`, `cf_agents_fibers`, `cf_agents_jobs`, `cf_agents_mcp_servers`, `cf_agents_runs`, `cf_agents_state`, `cf_agents_task_runs`, `cf_agents_task_steps`, `cf_agents_workflows` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
-| User | `_cf_KV` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
-| Chat | kv `index:sent` | code: server/chat.ts:141 | chat | server/chat.ts:149 | server/chat.ts:141 | n/a |
-| Chat | kv `optchat:logged` | code: server/chat.ts:133 | chat | server/chat.ts:136 | server/chat.ts:133 | n/a |
+| User | `_cf_KV`, `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
+| Chat | kv `index:sent` | code: server/chat.ts:165 | chat | server/chat.ts:173 | server/chat.ts:165 | n/a |
 | Chat | `cf_agents_jobs` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | Chat | `pi_conversations`, `pi_document_revisions`, `pi_documents`, `pi_durable_metadata`, `pi_durable_schema`, `pi_entries`, `pi_record_ids`, `pi_submissions`, `pi_tasks` | library: pi-durable (PiHarness) | chat | pi-durable (PiHarness) | pi-durable (PiHarness) | yes |
 | Chat | `_cf_KV`, `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
@@ -77,19 +77,20 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 
 | From | To | Method | file:line |
 |---|---|---|---|
-| Chat | Chat | `lastAnswer` | src/server/chat.ts:75 |
-| Chat | Chat | `receive` | src/server/chat.ts:73 |
-| Chat | User | `availableModels` | src/server/chat.ts:96 |
-| Chat | User | `credential` | src/server/chat.ts:62 |
-| Chat | User | `indexMessages` | src/server/chat.ts:148 |
-| Chat | User | `listChats` | src/server/chat.ts:72, src/server/chat.ts:110 |
-| Chat | User | `memoryDate` | src/server/chat.ts:39 |
-| Chat | User | `memoryLog` | src/server/chat.ts:135 |
-| Chat | User | `memorySearch` | src/server/chat.ts:40 |
-| Chat | User | `memoryView` | src/server/chat.ts:37 |
-| Chat | User | `memoryZoom` | src/server/chat.ts:38 |
-| Chat | User | `refreshCredential` | src/server/chat.ts:62 |
-| Chat | User | `setAgents` | src/server/chat.ts:77 |
+| Chat | Chat | `lastAnswer` | src/server/chat.ts:81 |
+| Chat | Chat | `receive` | src/server/chat.ts:79 |
+| Chat | User | `availableModels` | src/server/chat.ts:102 |
+| Chat | User | `credential` | src/server/chat.ts:68 |
+| Chat | User | `indexMessages` | src/server/chat.ts:172 |
+| Chat | User | `listChats` | src/server/chat.ts:78, src/server/chat.ts:116 |
+| Chat | User | `memoryCursor` | src/server/chat.ts:147 |
+| Chat | User | `memoryDate` | src/server/chat.ts:41 |
+| Chat | User | `memoryLog` | src/server/chat.ts:156 |
+| Chat | User | `memorySearch` | src/server/chat.ts:42 |
+| Chat | User | `memoryView` | src/server/chat.ts:39 |
+| Chat | User | `memoryZoom` | src/server/chat.ts:40 |
+| Chat | User | `refreshCredential` | src/server/chat.ts:68 |
+| Chat | User | `setAgents` | src/server/chat.ts:83 |
 | Server fns | Chat | `configureModel` | src/server/fns.ts:44 |
 | Server fns | Chat | `retireSubagent` | src/server/fns.ts:31 |
 | Server fns | User | `availableModels` | src/server/fns.ts:40 |
@@ -103,7 +104,7 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | Server fns | User | `resetMemory` | src/server/fns.ts:27 |
 | Server fns | User | `search` | src/server/fns.ts:23 |
 | Server fns | User | `setDebug` | src/server/fns.ts:26 |
-| User | Chat | `wipe` | src/server/user.ts:98 |
+| User | Chat | `wipe` | src/server/user.ts:129 |
 | Worker gate | User | `hasChat` | src/worker.ts:24 |
 | Worker route | User | `completeConnect` | src/routes/auth.callback.ts:11 |
 

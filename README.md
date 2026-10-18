@@ -15,6 +15,8 @@ Local-only demo: email/password accounts, each user connects their ChatGPT plan 
 
 ## Checks
 
+- `pnpm check:optchat-spec`: our OptChat code (labels, cursor, logging plan, pinned view, previous exchange, caps, compactor) against research/optchat-fix-plan.md Part 3, with fakes; no network.
+- `pnpm check:optchat-e2e`: live, on the dev server as a@test.dev (ChatGPT connected; ~8 turns of the plan): logging once per entry, previous exchange, cross-chat recall, compression at a 2K budget, no label leaks.
 - `pnpm check:optchat-upstream`: upstream pi-optchat's own memory test suite (vendored unchanged in `tests/optchat/test/`) run against our `src/optchat/memory.ts`; tests for modules we don't port are listed as n/a.
 
 With `pnpm dev` running: `node scripts/infra-map.ts` (regenerates ARCHITECTURE.md; `--check` only verifies), `node scripts/isolation.ts` (user B vs user A's objects), `node scripts/lineage.ts` (traces one tagged message through every local SQLite file; needs ChatGPT connected for a@test.dev). Exit 0 = pass.

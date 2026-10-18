@@ -59,10 +59,11 @@ async function fnId(name: string) {
   assert.ok(m, `server fn ${name} not found in the dev client module`);
   return m[1];
 }
-// seroval wire format of `{ data }`, only for the value shapes these fns take (undefined, boolean, string, flat object).
+// seroval wire format of `{ data }`, only for the value shapes these fns take (undefined, boolean, number, string, flat object).
 const enc = (v: unknown, i = { n: 0 }): unknown =>
   v === undefined ? { t: 2, s: 1 }
   : typeof v === "boolean" ? { t: 2, s: v ? 2 : 3 }
+  : typeof v === "number" ? { t: 0, s: v }
   : typeof v === "string" ? { t: 1, s: v }
   : { t: 10, i: ++i.n, p: { k: Object.keys(v as object), v: Object.values(v as object).map((x) => enc(x, i)) }, o: 0 };
 const payload = (data: unknown) => JSON.stringify({ t: { t: 10, i: 0, p: { k: ["data"], v: [enc(data)] }, o: 0 }, f: 127, m: [] });
@@ -108,4 +109,28 @@ export function finish(rows: Row[]): never {
   const pending = rows.filter((r) => r.status === "PENDING").length;
   console.log(`\n${failed ? "FAIL" : "PASS"}: ${rows.length - failed - pending} pass, ${failed} fail, ${pending} pending`);
   process.exit(failed ? 1 : 0);
+}
+
+/** Sends one message to a chat over its socket and resolves with the run's final answer text (the last assistant message
+ * committed before run_end). */
+export async function ask(actor: Actor, chatId: string, input: string, timeoutMs = 180_000): Promise<string> {
+  const ws = await openSocket(`/agents/chat/${actor.id}--${chatId}`, actor.cookie);
+  const id = `ask-${Math.random().toString(16).slice(2)}`;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => (ws.close(), reject(new Error(`no run_end within ${timeoutMs / 1000}s for "${input.slice(0, 40)}"`))), timeoutMs);
+    let submitted = false;
+    let last = "";
+    ws.on("message", (data) => {
+      const m = JSON.parse(String(data));
+      if (m.type === "error") return clearTimeout(timer), ws.close(), reject(new Error(m.message));
+      if (m.type === "result" && m.id === id) submitted = true;
+      if (m.type !== "events" || !submitted) return;
+      for (const e of m.events) {
+        const msg = e.type === "message_end" ? e.entry?.model?.[0] : undefined;
+        if (msg?.role === "assistant") last = msg.content.flatMap((c: { type: string; text?: string }) => (c.type === "text" ? [c.text] : [])).join("");
+        if (e.type === "run_end") return clearTimeout(timer), ws.close(), resolve(last);
+      }
+    });
+    ws.send(JSON.stringify({ type: "submit", id, input }));
+  });
 }
