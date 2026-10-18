@@ -17,6 +17,14 @@ import { MODEL, planModels } from "./models.ts";
  * Every method here is Durable Object RPC only; nothing is `@callable`, so a
  * browser can read state but never write it.
  */
+/** A chat's default title: its first message, cut at a word boundary with "…" so a cut never reads as data (e.g. "port 643"). */
+function titleFrom(text: string) {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= 60) return flat;
+  const cut = flat.slice(0, 57);
+  return `${cut.slice(0, cut.lastIndexOf(" ") > 20 ? cut.lastIndexOf(" ") : 57)}…`;
+}
+
 export class User extends Agent<Env, UserState> {
   initialState: UserState = { chats: [], chatgpt: null, debug: DEFAULT_DEBUG };
   #refreshing: Promise<Connection> | null = null;
@@ -111,7 +119,7 @@ export class User extends Agent<Env, UserState> {
     const chat = this.state.chats.find((c) => c.id === chatId);
     if (!chat) throw new Error(`Unknown chat ${chatId}`);
     const memory = this.#openMemory();
-    for (const r of rows) memory.append(r.kind, `[chat: ${chat.title}] ${r.text}`, r.date, undefined, undefined, chatId);
+    for (const r of rows) memory.append(r.kind, `[chat "${chat.title}"] ${r.text}`, r.date, undefined, undefined, chatId);
     this.ctx.waitUntil(memory.settle(undefined, "tree"));
   }
 
@@ -152,7 +160,7 @@ export class User extends Agent<Env, UserState> {
       if (fresh) sql.exec("INSERT INTO messages (text, chat_id, entry_id, role) VALUES (?, ?, ?, ?)", row.text, chatId, row.entryId, row.role);
     }
     const first = rows.find((r) => r.role === "user");
-    if (first) this.sql`UPDATE chats SET title = ${first.text.slice(0, 60)} WHERE id = ${chatId} AND title = 'New chat'`;
+    if (first) this.sql`UPDATE chats SET title = ${titleFrom(first.text)} WHERE id = ${chatId} AND title = 'New chat'`;
     this.sql`UPDATE chats SET updated_at = ${Date.now()} WHERE id = ${chatId}`;
     this.#publish();
   }

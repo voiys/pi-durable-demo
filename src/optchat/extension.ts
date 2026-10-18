@@ -4,7 +4,8 @@
 import type { Message } from "@earendil-works/pi-ai";
 import { defineExtension, GenerationTask, hook, ROOT_CONVERSATION_ID, type EntryRecord } from "@earendil-works/pi-durable";
 import { cap, type Kind } from "./memory.ts";
-import { allowSearch, MASTER, SEARCH_DOC, VIEW_DOC } from "./prompts.ts";
+import { allowSearch, CONTINUITY, MASTER, SEARCH_DOC, VIEW_DOC } from "./prompts.ts";
+import { bytes } from "./memory.ts";
 import { optchatTools } from "./tools.ts";
 
 const text = (content: Message["content"]) =>
@@ -40,19 +41,36 @@ export function logRows(entry: EntryRecord): LogRow[] {
   return rows;
 }
 
-/** The current run: everything after the last finished answer (an assistant message that didn't stop for tools). */
-function runStart(messages: readonly Message[]) {
-  for (let i = messages.length - 1; i >= 0; i--) {
+/** Where the run ending at `end` starts: right after the finished answer (an assistant message that didn't stop for tools) before it. */
+function runStart(messages: readonly Message[], end = messages.length) {
+  for (let i = end - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role === "assistant" && m.stopReason !== "toolUse") return i + 1;
   }
   return 0;
 }
 
+/** Upstream "Previous exchange" (src/transcript.ts completedExchange, on by default, 16 KB): the last finished run's requests
+ * and final answer as plain text, so a follow-up reads the exact wording. Left out when it ended in a tool call or is too big. */
+const PREVIOUS_EXCHANGE_BYTES = 16_000;
+function previousExchange(messages: readonly Message[], end: number): Message[] {
+  const answer = messages[end - 1];
+  if (answer?.role !== "assistant" || answer.stopReason !== "stop" || answer.content.some((b) => b.type === "toolCall")) return [];
+  const reply = answer.content.flatMap((b) => (b.type === "text" ? [{ type: "text" as const, text: b.text }] : []));
+  const requests = messages.slice(runStart(messages, end - 1), end - 1).flatMap((m) => (m.role === "user" ? [{ ...m, content: text(m.content) }] : []));
+  if (!requests.length || !reply.some((b) => b.text.trim())) return [];
+  const exchange: Message[] = [...requests, { ...answer, content: reply }];
+  const size = exchange.reduce((sum, m) => sum + bytes(text(m.content)), 0);
+  return size <= PREVIOUS_EXCHANGE_BYTES ? exchange : [];
+}
+
+// Adaptation: every log line names the chat it came from (one memory per user).
+const CHAT_LABELS = `\nEach summary item starts with [chat "<title>"]: the chat thread it came from. A title is only a label (often a cut-off first message), never a fact or a request.`;
+
 export function optchatExtension(memory: MemoryApi) {
   return defineExtension({
     name: "optchat",
-    sections: [{ key: "optchat", render: () => `${MASTER}\n\n${allowSearch(VIEW_DOC, true)}${SEARCH_DOC}`, tag: false }],
+    sections: [{ key: "optchat", render: () => `${MASTER}\n\n${allowSearch(VIEW_DOC, true)}${CONTINUITY}${SEARCH_DOC}${CHAT_LABELS}`, tag: false }],
     tools: optchatTools(memory),
     hooks: [
       hook(GenerationTask, {
@@ -61,7 +79,7 @@ export function optchatExtension(memory: MemoryApi) {
           const view = await memory.view(); // settled first: a turn never sees a placeholder line (recipe §6)
           const from = runStart(messages);
           let injected = false;
-          const run = messages.slice(from).map((m): Message => {
+          const run = [...previousExchange(messages, from), ...messages.slice(from)].map((m): Message => {
             if (m.role !== "user" || injected) return m;
             injected = true;
             const [first, ...rest] = typeof m.content === "string" ? [{ type: "text" as const, text: m.content }] : m.content;
