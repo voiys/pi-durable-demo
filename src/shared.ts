@@ -10,4 +10,6 @@ export type IndexRow = { entryId: string; role: "user" | "assistant"; text: stri
 
 /** Chat DO names are `<userId>--<chatId>`; the Worker gates sockets on that prefix. */
 export const chatObjectName = (userId: string, chatId: string) => `${userId}--${chatId}`;
+/** What a new chat starts with (and what the draft picker shows before the chat exists). */
+export const DEFAULT_MODEL = { id: "gpt-6.1-sol", thinkingLevel: "low" } as const;
 export type ModelOption = { id: string; name: string; levels: ModelThinkingLevel[] };

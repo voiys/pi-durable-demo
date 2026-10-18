@@ -5,26 +5,27 @@ import { InputGroupButton } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { chatModels, setChatModel } from "@/server/fns";
+import { modelOptions } from "@/server/fns";
 import type { ModelOption } from "@/shared";
 
 // The list depends on the ChatGPT account, not the chat: one fetch per page load, shown from cache on every later mount.
 let cached: ModelOption[] | undefined;
 let loading: Promise<ModelOption[]> | undefined;
 
-/** A brain button in the prompt input: pick the model, then the reasoning effort on a stepped slider of that model's levels. */
-export function ModelPicker({ chatId, model, thinkingLevel }: { chatId: string; model: string | null; thinkingLevel: string | null }) {
+/** A brain button in the prompt input: pick the model, then the reasoning effort on a stepped slider of that model's levels.
+ * `onChange` applies a choice (to a chat, or to a draft before its chat exists). */
+export function ModelPicker({ model, thinkingLevel, onChange }: { model: string | null; thinkingLevel: string | null; onChange: (model: string, thinkingLevel: string) => Promise<unknown> }) {
   const [options, setOptions] = useState<ModelOption[]>(cached ?? []);
   useEffect(() => {
-    loading ??= chatModels({ data: chatId }).then((list) => (cached = list));
+    loading ??= modelOptions().then((list) => (cached = list));
     loading.then(setOptions, (e: Error) => ((loading = undefined), toast.error("Couldn't load models", { description: e.message })));
-  }, [chatId]);
+  }, []);
   const current = options.find((o) => o.id === model);
   const levels = current?.levels ?? [];
   const step = levels.findIndex((l) => l === thinkingLevel);
   const label = `${current?.name ?? model ?? "Model"} · ${thinkingLevel ?? "-"}`;
   const change = (next: string, level: string) =>
-    setChatModel({ data: { chatId, model: next, thinkingLevel: level } }).catch((e: Error) => toast.error("Couldn't change model", { description: e.message }));
+    onChange(next, level).catch((e: Error) => toast.error("Couldn't change model", { description: e.message }));
 
   return (
     <Popover>

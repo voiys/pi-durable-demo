@@ -110,7 +110,6 @@ if (word) {
 for (const who of [B, null]) {
   const calls: [string, "GET" | "POST", unknown][] = [
     ...aChats.flatMap((c): [string, "GET" | "POST", unknown][] => [
-      ["chatModels", "GET", c.id],
       ["setChatModel", "POST", { chatId: c.id, model: "x", thinkingLevel: "low" }],
       ["renameChat", "POST", { chatId: c.id, title: "pwned" }],
       ["deleteChat", "POST", c.id],

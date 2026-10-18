@@ -26,8 +26,8 @@ flowchart LR
   Routes -->|"completeConnect"| User
   Chat -->|"lastAnswer, receive"| Chat
   Chat -->|"availableModels, credential, indexMessages, listChats, refreshCredential, setAgents"| User
-  Fns -->|"beginConnect, createChat, deleteChat, disconnect, hasChat, renameChat, search"| User
-  Fns -->|"configureModel, modelOptions"| Chat
+  Fns -->|"availableModels, beginConnect, createChat, deleteChat, disconnect, hasChat, renameChat, search"| User
+  Fns -->|"configureModel"| Chat
   User -->|"wipe"| Chat
   Gate -->|"hasChat"| User
 ```
@@ -67,8 +67,8 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | Chat | `optchat_log` | code: optchat/store.ts:6 | chat | optchat/store.ts:17 | optchat/store.ts:11 | yes |
 | Chat | `optchat_tree` | code: optchat/store.ts:7 | chat | optchat/store.ts:21 | optchat/store.ts:12 | yes |
 | Chat | `optchat_view` | code: optchat/store.ts:8 | chat | optchat/store.ts:25 | optchat/store.ts:13 | yes |
-| Chat | kv `index:sent` | code: server/chat.ts:166 | chat | server/chat.ts:174 | server/chat.ts:166 | n/a |
-| Chat | kv `optchat:logged` | code: server/chat.ts:157 | chat | server/chat.ts:160 | server/chat.ts:157 | n/a |
+| Chat | kv `index:sent` | code: server/chat.ts:161 | chat | server/chat.ts:169 | server/chat.ts:161 | n/a |
+| Chat | kv `optchat:logged` | code: server/chat.ts:152 | chat | server/chat.ts:155 | server/chat.ts:152 | n/a |
 | Chat | `cf_agents_jobs` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | Chat | `pi_conversations`, `pi_document_revisions`, `pi_documents`, `pi_durable_metadata`, `pi_durable_schema`, `pi_entries`, `pi_record_ids`, `pi_submissions`, `pi_tasks` | library: pi-durable (PiHarness) | chat | pi-durable (PiHarness) | pi-durable (PiHarness) | yes |
 | Chat | `_cf_KV`, `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
@@ -77,23 +77,23 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 
 | From | To | Method | file:line |
 |---|---|---|---|
-| Chat | Chat | `lastAnswer` | src/server/chat.ts:102 |
-| Chat | Chat | `receive` | src/server/chat.ts:100 |
-| Chat | User | `availableModels` | src/server/chat.ts:121 |
-| Chat | User | `credential` | src/server/chat.ts:46 |
-| Chat | User | `indexMessages` | src/server/chat.ts:173 |
-| Chat | User | `listChats` | src/server/chat.ts:99, src/server/chat.ts:139 |
-| Chat | User | `refreshCredential` | src/server/chat.ts:89 |
-| Chat | User | `setAgents` | src/server/chat.ts:104 |
-| Server fns | Chat | `configureModel` | src/server/fns.ts:34 |
-| Server fns | Chat | `modelOptions` | src/server/fns.ts:31 |
-| Server fns | User | `beginConnect` | src/server/fns.ts:18 |
-| Server fns | User | `createChat` | src/server/fns.ts:17 |
-| Server fns | User | `deleteChat` | src/server/fns.ts:28 |
-| Server fns | User | `disconnect` | src/server/fns.ts:19 |
-| Server fns | User | `hasChat` | src/server/fns.ts:11 |
-| Server fns | User | `renameChat` | src/server/fns.ts:25 |
-| Server fns | User | `search` | src/server/fns.ts:22 |
+| Chat | Chat | `lastAnswer` | src/server/chat.ts:100 |
+| Chat | Chat | `receive` | src/server/chat.ts:98 |
+| Chat | User | `availableModels` | src/server/chat.ts:119 |
+| Chat | User | `credential` | src/server/chat.ts:44 |
+| Chat | User | `indexMessages` | src/server/chat.ts:168 |
+| Chat | User | `listChats` | src/server/chat.ts:97, src/server/chat.ts:133 |
+| Chat | User | `refreshCredential` | src/server/chat.ts:87 |
+| Chat | User | `setAgents` | src/server/chat.ts:102 |
+| Server fns | Chat | `configureModel` | src/server/fns.ts:36 |
+| Server fns | User | `availableModels` | src/server/fns.ts:32 |
+| Server fns | User | `beginConnect` | src/server/fns.ts:19 |
+| Server fns | User | `createChat` | src/server/fns.ts:18 |
+| Server fns | User | `deleteChat` | src/server/fns.ts:29 |
+| Server fns | User | `disconnect` | src/server/fns.ts:20 |
+| Server fns | User | `hasChat` | src/server/fns.ts:12 |
+| Server fns | User | `renameChat` | src/server/fns.ts:26 |
+| Server fns | User | `search` | src/server/fns.ts:23 |
 | User | Chat | `wipe` | src/server/user.ts:69 |
 | Worker gate | User | `hasChat` | src/worker.ts:24 |
 | Worker route | User | `completeConnect` | src/routes/auth.callback.ts:11 |
@@ -116,5 +116,5 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | `serverFn searchMessages (GET)` | `requireUser` |
 | `serverFn renameChat (POST)` | `requireUser` + `User.hasChat` |
 | `serverFn deleteChat (POST)` | `requireUser` + `User.hasChat` |
-| `serverFn chatModels (GET)` | `requireUser` + `User.hasChat` |
+| `serverFn modelOptions (GET)` | `requireUser` |
 | `serverFn setChatModel (POST)` | `requireUser` + `User.hasChat` |

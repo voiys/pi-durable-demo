@@ -3,6 +3,7 @@ import { getRequestHeaders } from "@tanstack/react-start/server";
 import { env } from "../env.ts";
 import { chatObjectName } from "../shared.ts";
 import { auth, requireUser } from "./auth.ts";
+import { pickerOptions } from "./models.ts";
 
 const user = async () => env.User.getByName((await requireUser(getRequestHeaders())).id);
 /** The caller's id, after checking `chatId` is in the caller's own catalog (403 otherwise). */
@@ -26,9 +27,10 @@ export const renameChat = createServerFn({ method: "POST" })
 export const deleteChat = createServerFn({ method: "POST" })
   .validator((chatId: string) => chatId)
   .handler(async ({ data }) => env.User.getByName(await owner(data)).deleteChat(data));
-export const chatModels = createServerFn({ method: "GET" })
-  .validator((chatId: string) => chatId)
-  .handler(async ({ data }) => (await (await chat(data)).modelOptions()).map((m) => ({ ...m, levels: [...m.levels] })));
+/** The picker's models for the caller's ChatGPT plan; account-level, so it works before a chat exists. */
+export const modelOptions = createServerFn({ method: "GET" }).handler(async () =>
+  pickerOptions(await (await user()).availableModels()),
+);
 export const setChatModel = createServerFn({ method: "POST" })
   .validator((d: { chatId: string; model: string; thinkingLevel: string }) => d)
   .handler(async ({ data }) => (await chat(data.chatId)).configureModel(data.model, data.thinkingLevel));

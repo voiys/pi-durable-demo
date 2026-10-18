@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createModels, getSupportedThinkingLevels, type Models } from "@earendil-works/pi-ai/models";
+import { createModels, type Models } from "@earendil-works/pi-ai/models";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { createRegistry, GenerationTask, Harness, hook, ROOT_CONVERSATION_ID, type EntryRecord } from "@earendil-works/pi-durable";
 import { PiHarness, ROOT_SESSION } from "agents/harness/pi";
@@ -14,14 +14,10 @@ import { createCompressor } from "../optchat/compactor.ts";
 import { logEntry, optchatExtension } from "../optchat/extension.ts";
 import { Memory } from "../optchat/memory.ts";
 import { sqliteStore } from "../optchat/store.ts";
+import { MODEL, pickerOptions } from "./models.ts";
 import { oauth } from "./siwc.ts";
-import type { IndexRow, ModelOption } from "../shared.ts";
+import { DEFAULT_MODEL, type IndexRow, type ModelOption } from "../shared.ts";
 
-// A reasoning model: pi sends the system prompt as a developer item only for those,
-// and SIWC rejects role:system (pi-source-v1.3.0 packages/ai/src/api/openai-responses-shared.ts:231-243).
-export const MODEL = { provider: "openai", id: "gpt-6.1-sol" } as const;
-/** The models the picker offers, in this order (user's pick, DECISIONS.md); each must also be on the ChatGPT plan. */
-const PICKER = ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna"];
 const PREAMBLE = "You are a helpful, concise assistant.";
 
 function text(entry: EntryRecord): string {
@@ -91,7 +87,7 @@ export class Chat extends DurableObject<Env> {
       models.setProvider({ ...base, auth: { oauth: oauth((c) => this.#user().refreshCredential(c)) } });
       return Harness.open(storage, { models, registry: this.registry }, context);
     },
-    defaults: { model: MODEL, thinkingLevel: "low" },
+    defaults: { model: MODEL, thinkingLevel: DEFAULT_MODEL.thinkingLevel },
   });
 
   // Declared after `harness`; the harness factory only reads it once pi opens.
@@ -120,13 +116,7 @@ export class Chat extends DurableObject<Env> {
 
   /** Reasoning models the owner's ChatGPT account can use, with each one's thinking levels. */
   async modelOptions(): Promise<ModelOption[]> {
-    const available = new Set(await this.#user().availableModels());
-    const catalog = openaiProvider().getModels();
-    return PICKER.filter((id) => available.has(id)).map((id) => {
-      const m = catalog.find((c) => c.id === id);
-      if (!m?.reasoning) throw new Error(`${id} is not a reasoning model in pi's catalog`);
-      return { id, name: m.name, levels: getSupportedThinkingLevels(m) };
-    });
+    return pickerOptions(await this.#user().availableModels());
   }
 
   async configureModel(id: string, thinkingLevel: string) {

@@ -16,8 +16,8 @@ import {
 import type { PiMessage, PiMessagePart } from "@/pi/transcript";
 import { usePiSession } from "@/pi/use-pi-session";
 import { cn } from "@/lib/utils";
-import { createChat } from "@/server/fns";
-import { chatObjectName } from "@/shared";
+import { createChat, setChatModel } from "@/server/fns";
+import { chatObjectName, DEFAULT_MODEL } from "@/shared";
 
 // Inter-agent messages arrive as user messages with a bracketed prefix.
 const AGENT_PREFIXES = [
@@ -138,14 +138,19 @@ function Composer({ onSend, ready, running, onAbort, tools }: { onSend: (text: s
 
 /** "New chat": nothing exists until the first message, which creates the chat and is sent by its ChatPane. */
 export function DraftPane({ onCreated }: { onCreated: (chatId: string) => void }) {
+  const [choice, setChoice] = useState<{ model: string; thinkingLevel: string }>({ model: DEFAULT_MODEL.id, thinkingLevel: DEFAULT_MODEL.thinkingLevel });
   return (
     <div className="flex min-h-0 flex-1 flex-col justify-end">
       <Composer
         ready
         running={false}
         onAbort={() => {}}
+        tools={<ModelPicker model={choice.model} thinkingLevel={choice.thinkingLevel} onChange={async (model, thinkingLevel) => setChoice({ model, thinkingLevel })} />}
         onSend={async (text) => {
           const { id } = await createChat();
+          // The draft's model choice becomes the new chat's before its first message goes out.
+          if (choice.model !== DEFAULT_MODEL.id || choice.thinkingLevel !== DEFAULT_MODEL.thinkingLevel)
+            await setChatModel({ data: { chatId: id, ...choice } });
           firstMessages.set(id, text);
           onCreated(id);
         }}
@@ -192,7 +197,15 @@ export function ChatPane({ userId, chatId, session: sessionId, entry }: { userId
         ready={session.status === "open"}
         running={session.running}
         onAbort={session.abort}
-        tools={!sessionId && <ModelPicker chatId={chatId} model={session.model?.modelId ?? null} thinkingLevel={session.thinkingLevel} />}
+        tools={
+          !sessionId && (
+            <ModelPicker
+              model={session.model?.modelId ?? null}
+              thinkingLevel={session.thinkingLevel}
+              onChange={(model, thinkingLevel) => setChatModel({ data: { chatId, model, thinkingLevel } })}
+            />
+          )
+        }
       />
     </div>
   );
