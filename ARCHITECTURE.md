@@ -26,8 +26,9 @@ flowchart LR
   Routes -->|"completeConnect"| User
   Chat -->|"lastAnswer, receive"| Chat
   Chat -->|"availableModels, credential, indexMessages, listChats, refreshCredential, setAgents"| User
-  Fns -->|"beginConnect, createChat, disconnect, hasChat, search"| User
+  Fns -->|"beginConnect, createChat, deleteChat, disconnect, hasChat, renameChat, search"| User
   Fns -->|"configureModel, modelOptions"| Chat
+  User -->|"wipe"| Chat
   Gate -->|"hasChat"| User
 ```
 
@@ -52,22 +53,22 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | D1 | `verification` | code: migrations/0001_better_auth.sql:7 | shared | better-auth (server/auth.ts) | better-auth (server/auth.ts) | yes |
 | D1 | `__alchemy_migrations` | library: alchemy | shared | alchemy | alchemy | yes |
 | D1 | `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
-| User | `chats` | code: server/user.ts:19 | user | server/user.ts:41, server/user.ts:71, server/user.ts:72 | server/user.ts:26, server/user.ts:59, server/user.ts:84 | yes |
-| User | `chat_agents` | code: server/user.ts:20 | user | server/user.ts:53, server/user.ts:54 | server/user.ts:27 | yes |
-| User | `indexed` | code: server/user.ts:21 | user | server/user.ts:67 | - | yes |
-| User | `messages` (FTS5) | code: server/user.ts:22 | user | server/user.ts:68 | server/user.ts:84 | yes |
-| User | kv `siwc:connection` | code: server/user.ts:103 | user | server/user.ts:113, server/user.ts:118, server/user.ts:159 | server/user.ts:103, server/user.ts:125, server/user.ts:153 | n/a |
-| User | kv `siwc:host` | code: server/user.ts:97 | user | server/user.ts:98 | server/user.ts:97 | n/a |
-| User | kv `siwc:models` | code: server/user.ts:119 | user | server/user.ts:119, server/user.ts:146 | server/user.ts:132 | n/a |
-| User | kv `siwc:pending` | code: server/user.ts:104 | user | server/user.ts:104, server/user.ts:111 | server/user.ts:109 | n/a |
+| User | `chats` | code: server/user.ts:19 | user | server/user.ts:41, server/user.ts:62, server/user.ts:73, server/user.ts:90, server/user.ts:91 | server/user.ts:26, server/user.ts:78, server/user.ts:103 | yes |
+| User | `chat_agents` | code: server/user.ts:20 | user | server/user.ts:53, server/user.ts:54, server/user.ts:72 | server/user.ts:27 | yes |
+| User | `indexed` | code: server/user.ts:21 | user | server/user.ts:71, server/user.ts:86 | - | yes |
+| User | `messages` (FTS5) | code: server/user.ts:22 | user | server/user.ts:70, server/user.ts:87 | server/user.ts:103 | yes |
+| User | kv `siwc:connection` | code: server/user.ts:122 | user | server/user.ts:132, server/user.ts:137, server/user.ts:178 | server/user.ts:122, server/user.ts:144, server/user.ts:172 | n/a |
+| User | kv `siwc:host` | code: server/user.ts:116 | user | server/user.ts:117 | server/user.ts:116 | n/a |
+| User | kv `siwc:models` | code: server/user.ts:138 | user | server/user.ts:138, server/user.ts:165 | server/user.ts:151 | n/a |
+| User | kv `siwc:pending` | code: server/user.ts:123 | user | server/user.ts:123, server/user.ts:130 | server/user.ts:128 | n/a |
 | User | `messages_config`, `messages_content`, `messages_data`, `messages_docsize`, `messages_idx` | library: FTS5 shadow tables of `messages` | user | FTS5 shadow tables of `messages` | FTS5 shadow tables of `messages` | yes |
 | User | `cf_agent_tool_runs`, `cf_agents_facet_runs`, `cf_agents_fibers`, `cf_agents_jobs`, `cf_agents_mcp_servers`, `cf_agents_runs`, `cf_agents_state`, `cf_agents_task_runs`, `cf_agents_task_steps`, `cf_agents_workflows` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | User | `_cf_KV` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
 | Chat | `optchat_log` | code: optchat/store.ts:6 | chat | optchat/store.ts:17 | optchat/store.ts:11 | yes |
 | Chat | `optchat_tree` | code: optchat/store.ts:7 | chat | optchat/store.ts:21 | optchat/store.ts:12 | yes |
 | Chat | `optchat_view` | code: optchat/store.ts:8 | chat | optchat/store.ts:25 | optchat/store.ts:13 | yes |
-| Chat | kv `index:sent` | code: server/chat.ts:159 | chat | server/chat.ts:167 | server/chat.ts:159 | n/a |
-| Chat | kv `optchat:logged` | code: server/chat.ts:150 | chat | server/chat.ts:153 | server/chat.ts:150 | n/a |
+| Chat | kv `index:sent` | code: server/chat.ts:166 | chat | server/chat.ts:174 | server/chat.ts:166 | n/a |
+| Chat | kv `optchat:logged` | code: server/chat.ts:157 | chat | server/chat.ts:160 | server/chat.ts:157 | n/a |
 | Chat | `cf_agents_jobs` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | Chat | `pi_conversations`, `pi_document_revisions`, `pi_documents`, `pi_durable_metadata`, `pi_durable_schema`, `pi_entries`, `pi_record_ids`, `pi_submissions`, `pi_tasks` | library: pi-durable (PiHarness) | chat | pi-durable (PiHarness) | pi-durable (PiHarness) | yes |
 | Chat | `_cf_KV`, `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
@@ -80,17 +81,20 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | Chat | Chat | `receive` | src/server/chat.ts:100 |
 | Chat | User | `availableModels` | src/server/chat.ts:121 |
 | Chat | User | `credential` | src/server/chat.ts:46 |
-| Chat | User | `indexMessages` | src/server/chat.ts:166 |
+| Chat | User | `indexMessages` | src/server/chat.ts:173 |
 | Chat | User | `listChats` | src/server/chat.ts:99, src/server/chat.ts:139 |
 | Chat | User | `refreshCredential` | src/server/chat.ts:89 |
 | Chat | User | `setAgents` | src/server/chat.ts:104 |
-| Server fns | Chat | `configureModel` | src/server/fns.ts:26 |
-| Server fns | Chat | `modelOptions` | src/server/fns.ts:23 |
-| Server fns | User | `beginConnect` | src/server/fns.ts:16 |
-| Server fns | User | `createChat` | src/server/fns.ts:15 |
-| Server fns | User | `disconnect` | src/server/fns.ts:17 |
-| Server fns | User | `hasChat` | src/server/fns.ts:10 |
-| Server fns | User | `search` | src/server/fns.ts:20 |
+| Server fns | Chat | `configureModel` | src/server/fns.ts:34 |
+| Server fns | Chat | `modelOptions` | src/server/fns.ts:31 |
+| Server fns | User | `beginConnect` | src/server/fns.ts:18 |
+| Server fns | User | `createChat` | src/server/fns.ts:17 |
+| Server fns | User | `deleteChat` | src/server/fns.ts:28 |
+| Server fns | User | `disconnect` | src/server/fns.ts:19 |
+| Server fns | User | `hasChat` | src/server/fns.ts:11 |
+| Server fns | User | `renameChat` | src/server/fns.ts:25 |
+| Server fns | User | `search` | src/server/fns.ts:22 |
+| User | Chat | `wipe` | src/server/user.ts:69 |
 | Worker gate | User | `hasChat` | src/worker.ts:24 |
 | Worker route | User | `completeConnect` | src/routes/auth.callback.ts:11 |
 
@@ -110,5 +114,7 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | `serverFn connectChatGPT (POST)` | `requireUser` |
 | `serverFn disconnectChatGPT (POST)` | `requireUser` |
 | `serverFn searchMessages (GET)` | `requireUser` |
+| `serverFn renameChat (POST)` | `requireUser` + `User.hasChat` |
+| `serverFn deleteChat (POST)` | `requireUser` + `User.hasChat` |
 | `serverFn chatModels (GET)` | `requireUser` + `User.hasChat` |
 | `serverFn setChatModel (POST)` | `requireUser` + `User.hasChat` |

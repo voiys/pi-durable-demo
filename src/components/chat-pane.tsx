@@ -1,5 +1,5 @@
 import { ArrowUp, Square } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Markdown, TraceGroup, type ToolResult } from "@/components/ai/parts";
 import { ModelPicker } from "@/components/model-picker";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
@@ -16,6 +16,7 @@ import {
 import type { PiMessage, PiMessagePart } from "@/pi/transcript";
 import { usePiSession } from "@/pi/use-pi-session";
 import { cn } from "@/lib/utils";
+import { createChat } from "@/server/fns";
 import { chatObjectName } from "@/shared";
 
 // Inter-agent messages arrive as user messages with a bracketed prefix.
@@ -85,6 +86,74 @@ function Row({ message, results, highlight }: { message: PiMessage; results: Map
   );
 }
 
+/** First messages of chats created by DraftPane, waiting for the new chat's socket. */
+const firstMessages = new Map<string, string>();
+
+/** AI Elements prompt input: Enter sends, Shift+Enter is a new line, stop while running; `tools` sit left of send. */
+function Composer({ onSend, ready, running, onAbort, tools }: { onSend: (text: string) => void; ready: boolean; running: boolean; onAbort: () => void; tools?: ReactNode }) {
+  const [draft, setDraft] = useState("");
+  const send = () => {
+    if (!draft.trim() || !ready) return;
+    onSend(draft);
+    setDraft("");
+  };
+  return (
+    <form
+      className="mx-auto w-full max-w-3xl p-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+    >
+      <InputGroup>
+        <InputGroupTextarea
+          value={draft}
+          autoFocus
+          placeholder={ready ? "Message pi…" : "Connecting…"}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        />
+        <InputGroupAddon align="block-end" className="p-2">
+          {tools}
+          <span className="flex-1" />
+          {running ? (
+            <InputGroupButton type="button" variant="outline" size="icon-sm" aria-label="Stop" onClick={onAbort}>
+              <Square />
+            </InputGroupButton>
+          ) : (
+            <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label="Send" disabled={!ready}>
+              <ArrowUp />
+            </InputGroupButton>
+          )}
+        </InputGroupAddon>
+      </InputGroup>
+    </form>
+  );
+}
+
+/** "New chat": nothing exists until the first message, which creates the chat and is sent by its ChatPane. */
+export function DraftPane({ onCreated }: { onCreated: (chatId: string) => void }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col justify-end">
+      <Composer
+        ready
+        running={false}
+        onAbort={() => {}}
+        onSend={async (text) => {
+          const { id } = await createChat();
+          firstMessages.set(id, text);
+          onCreated(id);
+        }}
+      />
+    </div>
+  );
+}
+
 export function ChatPane({ userId, chatId, session: sessionId, entry }: { userId: string; chatId: string; session?: string; entry?: string }) {
   const session = usePiSession(chatObjectName(userId, chatId), sessionId);
   // A search hit opens the chat at its message, once the transcript snapshot has it.
@@ -92,16 +161,16 @@ export function ChatPane({ userId, chatId, session: sessionId, entry }: { userId
   useEffect(() => {
     if (hasEntry) document.getElementById(`entry-${entry}`)!.scrollIntoView({ block: "center" });
   }, [entry, hasEntry]);
-  const [draft, setDraft] = useState("");
+  // A chat created by its first message (see DraftPane) sends that message once its socket opens.
+  useEffect(() => {
+    const first = firstMessages.get(chatId);
+    if (first === undefined || session.status !== "open") return;
+    firstMessages.delete(chatId);
+    session.submit(first);
+  }, [chatId, session.status, session.submit]);
   const results = new Map<string, ToolResult>();
   for (const m of session.messages)
     for (const p of m.parts) if (p.type === "tool-result") results.set(p.id, p);
-  const send = () => {
-    if (!draft.trim()) return;
-    session.submit(draft);
-    setDraft("");
-  };
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <MessageScrollerProvider>
@@ -118,40 +187,13 @@ export function ChatPane({ userId, chatId, session: sessionId, entry }: { userId
           <MessageScrollerButton />
         </MessageScroller>
       </MessageScrollerProvider>
-      <form
-        className="mx-auto w-full max-w-3xl p-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send();
-        }}
-      >
-        <InputGroup>
-          <InputGroupTextarea
-            value={draft}
-            placeholder={session.status === "open" ? "Message pi…" : "Connecting…"}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-          />
-          <InputGroupAddon align="block-end" className="p-2">
-            {!sessionId && <ModelPicker chatId={chatId} model={session.model?.modelId ?? null} thinkingLevel={session.thinkingLevel} />}
-            <span className="flex-1" />
-            {session.running ? (
-              <InputGroupButton type="button" variant="outline" size="icon-sm" onClick={session.abort}>
-                <Square />
-              </InputGroupButton>
-            ) : (
-              <InputGroupButton type="submit" variant="default" size="icon-sm" disabled={session.status !== "open"}>
-                <ArrowUp />
-              </InputGroupButton>
-            )}
-          </InputGroupAddon>
-        </InputGroup>
-      </form>
+      <Composer
+        onSend={session.submit}
+        ready={session.status === "open"}
+        running={session.running}
+        onAbort={session.abort}
+        tools={!sessionId && <ModelPicker chatId={chatId} model={session.model?.modelId ?? null} thinkingLevel={session.thinkingLevel} />}
+      />
     </div>
   );
 }

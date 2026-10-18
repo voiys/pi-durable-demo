@@ -3,7 +3,7 @@ import { Agent } from "agents";
 import type { Env } from "../env.ts";
 import { authorize, complete, refresh, type Connection, type Pending } from "./siwc.ts";
 
-import type { ChatSummary, IndexRow, SearchHit, UserState } from "../shared.ts";
+import { chatObjectName, type ChatSummary, type IndexRow, type SearchHit, type UserState } from "../shared.ts";
 
 /**
  * One per better-auth user (name = user id). Owns the chat list (synced to the
@@ -52,6 +52,25 @@ export class User extends Agent<Env, UserState> {
     if (!this.hasChat(chatId)) throw new Error(`Unknown chat ${chatId}`);
     this.sql`DELETE FROM chat_agents WHERE chat_id = ${chatId}`;
     for (const a of agents) this.sql`INSERT INTO chat_agents (chat_id, name, session) VALUES (${chatId}, ${a.name}, ${a.session})`;
+    this.#publish();
+  }
+
+  renameChat(chatId: string, title: string) {
+    const trimmed = title.trim();
+    if (!this.hasChat(chatId)) throw new Error(`Unknown chat ${chatId}`);
+    if (!trimmed) throw new Error("A chat title can't be empty");
+    this.sql`UPDATE chats SET title = ${trimmed.slice(0, 120)} WHERE id = ${chatId}`;
+    this.#publish();
+  }
+
+  /** Wipes the Chat DO (transcript, OptChat memory, subagents), then every trace of it here: catalog, subagents, search index. */
+  async deleteChat(chatId: string) {
+    if (!this.hasChat(chatId)) throw new Error(`Unknown chat ${chatId}`);
+    await this.env.Chat.getByName(chatObjectName(this.name, chatId)).wipe();
+    this.sql`DELETE FROM messages WHERE chat_id = ${chatId}`;
+    this.sql`DELETE FROM indexed WHERE chat_id = ${chatId}`;
+    this.sql`DELETE FROM chat_agents WHERE chat_id = ${chatId}`;
+    this.sql`DELETE FROM chats WHERE id = ${chatId}`;
     this.#publish();
   }
 

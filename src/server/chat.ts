@@ -145,6 +145,13 @@ export class Chat extends DurableObject<Env> {
     return (await lastOf(this.harness, ROOT_SESSION)).text;
   }
 
+  /** Deletes all of this chat's storage and alarm, then drops the isolate so nothing in memory outlives it. */
+  async wipe() {
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    this.ctx.abort("chat deleted");
+  }
+
   /** Logs the root conversation's finished turn into the OptChat memory; it summarizes in the background. */
   async logTurn() {
     const logged = (this.ctx.storage.kv.get("optchat:logged") as number | undefined) ?? 0;

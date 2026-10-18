@@ -112,6 +112,8 @@ for (const who of [B, null]) {
     ...aChats.flatMap((c): [string, "GET" | "POST", unknown][] => [
       ["chatModels", "GET", c.id],
       ["setChatModel", "POST", { chatId: c.id, model: "x", thinkingLevel: "low" }],
+      ["renameChat", "POST", { chatId: c.id, title: "pwned" }],
+      ["deleteChat", "POST", c.id],
     ]),
     ...(who ? [] : [["createChat", "POST", undefined] as [string, "POST", undefined]]),
     ["searchMessages", "GET", word ?? "chat"],

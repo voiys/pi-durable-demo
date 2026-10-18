@@ -49,8 +49,8 @@ const RULES: { binding?: string; obj: string; key: string; owner: string; probes
       { file: "src/shared.ts", re: /chatObjectName = \(userId: string, chatId: string\) => `\$\{userId\}--\$\{chatId\}`/, why: "chatObjectName builds userId--chatId" },
       { file: "src/worker.ts", re: /name\?\.startsWith\(`\$\{id\}--`\)/, why: "gate: chat name must start with the caller's id" },
       { file: "src/worker.ts", re: /env\.User\.getByName\(id\)\.hasChat\(chatId\)/, why: "gate: chatId must be in the caller's catalog" },
-      { file: "src/server/fns.ts", re: /hasChat\(chatId\)\)\) throw[\s\S]*env\.Chat\.getByName\(chatObjectName\(id, chatId\)\)/, why: "server fns: hasChat before opening the Chat" },
-      { file: "src/server/user.ts", re: /^(?![\s\S]*env\.Chat\.)/, why: "User never opens a Chat (chats call their User, not the reverse)" },
+      { file: "src/server/fns.ts", re: /hasChat\(chatId\)\)\) throw[\s\S]*env\.Chat\.getByName\(chatObjectName\(await owner\(chatId\), chatId\)\)/, why: "server fns: hasChat (owner) before opening the Chat" },
+      { file: "src/server/user.ts", re: /^(?![\s\S]*env\.Chat\.getByName\((?!chatObjectName\(this\.name, chatId\)\)))/, why: "User opens only its own chats (chatObjectName(this.name, chatId))" },
       { file: "src/server/chat.ts", re: /userId = this\.#name\.split\("--"\)\[0\][\s\S]*chatId = this\.#name\.split\("--"\)\[1\]/, why: "Chat parses userId--chatId from its name" },
       { file: "src/server/chat.ts", re: /this\.env\.Chat\.getByName\(`\$\{this\.userId\}--\$\{chatId\}`\)\.receive/, why: "Chat-to-Chat stays inside the same user" },
     ],
@@ -113,7 +113,7 @@ for (const h of hits(walk("src/routes", /\.tsx?$/).map((f) => f), /createFileRou
 const fnsSrc = read("src/server/fns.ts");
 for (const block of fnsSrc.split("export const ").slice(1)) {
   const [, name, method] = block.match(/^(\w+) = createServerFn\(\{ method: "(\w+)" \}\)/) ?? assert(false, "unparsed server fn");
-  const rule = /\(await chat\(/.test(block) ? "`requireUser` + `User.hasChat`" : /\(await user\(\)\)/.test(block) ? "`requireUser`" : /getSession/.test(block) ? "public (returns session or null)" : assert(false, `no rule for server fn ${name}`);
+  const rule = /\(await chat\(|await owner\(/.test(block) ? "`requireUser` + `User.hasChat`" : /\(await user\(\)\)/.test(block) ? "`requireUser`" : /getSession/.test(block) ? "public (returns session or null)" : assert(false, `no rule for server fn ${name}`);
   routes.push({ path: `serverFn ${name} (${method})`, rule });
 }
 

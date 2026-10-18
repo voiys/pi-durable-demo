@@ -3,7 +3,8 @@ import { useAgent } from "agents/react";
 import { Bot, MessageSquarePlus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { ChatPane } from "@/components/chat-pane";
+import { ChatPane, DraftPane } from "@/components/chat-pane";
+import { ChatRow } from "@/components/chat-row";
 import { NavUser } from "@/components/nav-user";
 import { Snippet } from "@/components/search-hits";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { createChat, getSession, searchMessages } from "@/server/fns";
+import { getSession, searchMessages } from "@/server/fns";
 import type { SearchHit, UserState } from "@/shared";
 
 export const Route = createFileRoute("/")({
@@ -64,7 +65,7 @@ function App() {
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <Button onClick={async () => navigate({ search: { chat: (await createChat()).id } })} disabled={!state?.chatgpt}>
+          <Button onClick={() => navigate({ search: {} })} disabled={!state?.chatgpt}>
             <MessageSquarePlus /> New chat
           </Button>
           <div className="relative">
@@ -77,10 +78,13 @@ function App() {
             <SidebarMenu>
               {needle && chats.length === 0 && <p className="text-muted-foreground px-2 text-sm">No matches.</p>}
               {chats.map((c) => (
-                <SidebarMenuItem key={c.id}>
-                  <SidebarMenuButton isActive={c.id === chat && !agent} onClick={() => navigate({ search: { chat: c.id } })}>
-                    <span className="truncate">{c.title}</span>
-                  </SidebarMenuButton>
+                <ChatRow
+                  key={c.id}
+                  chat={c}
+                  active={c.id === chat && !agent}
+                  onOpen={() => navigate({ search: { chat: c.id } })}
+                  onDeleted={() => c.id === chat && navigate({ search: {} })}
+                >
                   {needle && hits.some((h) => h.chatId === c.id) && (
                     <SidebarMenuSub>
                       {hits
@@ -116,7 +120,7 @@ function App() {
                       ))}
                     </SidebarMenuSub>
                   )}
-                </SidebarMenuItem>
+                </ChatRow>
               ))}
             </SidebarMenu>
           </SidebarGroup>
@@ -133,9 +137,11 @@ function App() {
         {chat ? (
           <ChatPane key={`${chat}:${agent ?? "main"}`} userId={user.id} chatId={chat} session={agent} entry={entry} />
         ) : (
-          <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
-            {state?.chatgpt ? "Pick a chat or start a new one." : "Connect your ChatGPT plan to start chatting."}
-          </div>
+          state?.chatgpt ? (
+            <DraftPane onCreated={(id) => navigate({ search: { chat: id } })} />
+          ) : (
+            <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">Connect your ChatGPT plan to start chatting.</div>
+          )
         )}
       </SidebarInset>
     </SidebarProvider>
