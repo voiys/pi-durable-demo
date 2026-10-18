@@ -16,6 +16,7 @@ import {
   defineTool,
   type EntryId,
   type EntryRecord,
+  type Extension,
   ROOT_CONVERSATION_ID,
   type TaskId,
 } from "@earendil-works/pi-durable";
@@ -86,6 +87,8 @@ export type AgentHost = {
   sessions(): Promise<{ id: string; title: string }[]>;
   sendToSession(chatId: string, from: string, message: string): Promise<void>;
   lastOfSession(chatId: string): Promise<string>;
+  /** Extensions subagents don't get (the main agent's OptChat memory). */
+  childExcluded(): Extension[];
   /** Tells the User DO which subagents this chat has, for the sidebar. */
   agentsChanged(): Promise<void>;
 };
@@ -181,7 +184,7 @@ export function agentExtensions(host: AgentHost) {
           const anchor = await tx.createTask(Anchor, null, background);
           const child = await tx.createConversation({ ownership: { kind: "task", taskId: anchor } });
           await configure(tx, child.id, {
-            extensions: { remove: [MainTools] },
+            extensions: { remove: [MainTools, ...host.childExcluded()] },
             instructions: `You are the subagent "${name}" of this session. Answer the main agent's requests. Use the agents tool to talk to the main agent or other subagents.`,
           });
           state.agents[name] = { conversationId: child.id, reported: [] };

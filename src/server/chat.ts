@@ -1,15 +1,19 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { createModels, getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
+import { createModels, getSupportedThinkingLevels, type Models } from "@earendil-works/pi-ai/models";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
-import { createRegistry, GenerationTask, Harness, hook, type EntryRecord } from "@earendil-works/pi-durable";
+import { createRegistry, GenerationTask, Harness, hook, ROOT_CONVERSATION_ID, type EntryRecord } from "@earendil-works/pi-durable";
 import { PiHarness, ROOT_SESSION } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env.ts";
 import { PiSessionSockets } from "../pi/sockets.ts";
 import { agentExtensions, lastOf, sessionAgents, type AgentHost } from "./agents.ts";
+import { createCompressor } from "../optchat/compactor.ts";
+import { logEntry, optchatExtension } from "../optchat/extension.ts";
+import { Memory } from "../optchat/memory.ts";
+import { sqliteStore } from "../optchat/store.ts";
 import { oauth } from "./siwc.ts";
 import type { IndexRow, ModelOption } from "../shared.ts";
 
@@ -48,17 +52,41 @@ export class Chat extends DurableObject<Env> {
   };
 
   readonly registry = createRegistry();
+  #models: Models | undefined;
+  #memory: Memory | undefined;
+  /** OptChat memory of the main agent (v1.2), opened from this DO's SQLite on first use. */
+  readonly memory = () => {
+    if (!this.#memory) {
+      const store = sqliteStore(this.ctx.storage.sql);
+      const compress = createCompressor(() => this.#models!, () => ({ provider: MODEL.provider, model: MODEL.id, thinking: "medium" }));
+      this.#memory = new Memory({ store, saved: store.load() }, compress);
+    }
+    return this.#memory;
+  };
+  readonly #optchat = optchatExtension(this.memory);
+  get optchat() {
+    return this.ctx.storage.kv.get("optchat") === true;
+  }
   readonly harness = new PiHarness({
     harness: ({ storage, context }) => {
       this.registry.install({
         name: "chat",
         sections: [{ key: "preamble", render: () => PREAMBLE, tag: false }],
-        hooks: [hook(GenerationTask, { onYield: () => void this.ctx.waitUntil(this.syncIndex()) })],
+        hooks: [
+          hook(GenerationTask, {
+            onYield: (_answer, api) => {
+              if (api.conversationId !== ROOT_CONVERSATION_ID) return;
+              this.ctx.waitUntil(this.syncIndex());
+              if (this.optchat) this.logTurn();
+            },
+          }),
+        ],
       });
       const { MainTools, PeerTools } = agentExtensions(this.#agentHost);
       this.registry.install(MainTools);
       this.registry.install(PeerTools);
-      const models = createModels({ credentials: this.#credentials });
+      if (this.optchat) this.registry.install(this.#optchat);
+      const models = (this.#models = createModels({ credentials: this.#credentials }));
       const base = openaiProvider();
       models.setProvider({ ...base, auth: { oauth: oauth((c) => this.#user().refreshCredential(c)) } });
       return Harness.open(storage, { models, registry: this.registry }, context);
@@ -72,6 +100,7 @@ export class Chat extends DurableObject<Env> {
     chatId: this.chatId,
     sessions: async () => (await this.#user().listChats()).map((c) => ({ id: c.id, title: c.title })),
     sendToSession: (chatId, from, message) => this.env.Chat.getByName(`${this.userId}--${chatId}`).receive(from, message),
+    childExcluded: () => [this.#optchat],
     lastOfSession: (chatId) => this.env.Chat.getByName(`${this.userId}--${chatId}`).lastAnswer(),
     agentsChanged: async () =>
       this.#user().setAgents(this.chatId, (await sessionAgents(this.#agentHost)).filter((a) => a.name !== "main").map(({ name, session }) => ({ name, session }))),
@@ -116,6 +145,21 @@ export class Chat extends DurableObject<Env> {
 
   async lastAnswer() {
     return (await lastOf(this.harness, ROOT_SESSION)).text;
+  }
+
+  /** Makes this chat's main agent an OptChat (called once, when the chat is created). */
+  enableOptChat() {
+    this.ctx.storage.kv.put("optchat", true);
+    this.registry.install(this.#optchat);
+  }
+
+  /** Logs the root conversation's finished turn into the OptChat memory; it summarizes in the background. */
+  async logTurn() {
+    const logged = (this.ctx.storage.kv.get("optchat:logged") as number | undefined) ?? 0;
+    const entries = await this.harness.session().messages();
+    for (const entry of entries.slice(logged)) logEntry(this.memory(), entry);
+    this.ctx.storage.kv.put("optchat:logged", entries.length);
+    this.ctx.waitUntil(this.memory().settle(undefined, "tree"));
   }
 
   /** Pushes user/assistant entries not yet pushed to the User DO's search index. */

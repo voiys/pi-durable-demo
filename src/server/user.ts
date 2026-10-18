@@ -3,7 +3,7 @@ import { Agent } from "agents";
 import type { Env } from "../env.ts";
 import { authorize, complete, refresh, type Connection, type Pending } from "./siwc.ts";
 
-import type { ChatSummary, IndexRow, SearchHit, UserState } from "../shared.ts";
+import { chatObjectName, type ChatSummary, type IndexRow, type SearchHit, type UserState } from "../shared.ts";
 
 /**
  * One per better-auth user (name = user id). Owns the chat list (synced to the
@@ -36,8 +36,9 @@ export class User extends Agent<Env, UserState> {
     });
   }
 
-  createChat(): ChatSummary {
-    const chat = { id: crypto.randomUUID(), title: "New chat", updatedAt: Date.now(), agents: [] };
+  async createChat(optchat: boolean): Promise<ChatSummary> {
+    const chat = { id: crypto.randomUUID(), title: optchat ? "New OptChat" : "New chat", updatedAt: Date.now(), agents: [] };
+    if (optchat) await this.env.Chat.getByName(chatObjectName(this.name, chat.id)).enableOptChat();
     this.sql`INSERT INTO chats (id, title, updated_at) VALUES (${chat.id}, ${chat.title}, ${chat.updatedAt})`;
     this.#publish();
     return chat;
@@ -68,7 +69,7 @@ export class User extends Agent<Env, UserState> {
       if (fresh) sql.exec("INSERT INTO messages (text, chat_id, entry_id, role) VALUES (?, ?, ?, ?)", row.text, chatId, row.entryId, row.role);
     }
     const first = rows.find((r) => r.role === "user");
-    if (first) this.sql`UPDATE chats SET title = ${first.text.slice(0, 60)} WHERE id = ${chatId} AND title = 'New chat'`;
+    if (first) this.sql`UPDATE chats SET title = ${first.text.slice(0, 60)} WHERE id = ${chatId} AND title IN ('New chat', 'New OptChat')`;
     this.sql`UPDATE chats SET updated_at = ${Date.now()} WHERE id = ${chatId}`;
     this.#publish();
   }

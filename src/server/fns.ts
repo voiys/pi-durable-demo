@@ -8,7 +8,9 @@ const user = async () => env.User.getByName((await requireUser(getRequestHeaders
 const chat = async (chatId: string) => env.Chat.getByName(chatObjectName((await requireUser(getRequestHeaders())).id, chatId));
 
 export const getSession = createServerFn({ method: "GET" }).handler(() => auth().api.getSession({ headers: getRequestHeaders() }));
-export const createChat = createServerFn({ method: "POST" }).handler(async () => ({ id: (await (await user()).createChat()).id }));
+export const createChat = createServerFn({ method: "POST" })
+  .validator((optchat: boolean) => optchat)
+  .handler(async ({ data }) => ({ id: (await (await user()).createChat(data)).id }));
 export const connectChatGPT = createServerFn({ method: "POST" }).handler(async () => (await user()).beginConnect());
 export const disconnectChatGPT = createServerFn({ method: "POST" }).handler(async () => (await user()).disconnect());
 export const searchMessages = createServerFn({ method: "GET" })

@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
-import { Bot, MessageSquarePlus, Search } from "lucide-react";
+import { Bot, InfinityIcon, MessageSquarePlus, Search } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 import { ChatPane } from "@/components/chat-pane";
@@ -53,9 +53,14 @@ function App() {
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <Button onClick={async () => navigate({ search: { chat: (await createChat()).id } })} disabled={!state?.chatgpt}>
-            <MessageSquarePlus /> New chat
-          </Button>
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={async () => navigate({ search: { chat: (await createChat({ data: false })).id } })} disabled={!state?.chatgpt}>
+              <MessageSquarePlus /> New chat
+            </Button>
+            <Button variant="secondary" title="One endless chat whose history is its memory (OptChat)" onClick={async () => navigate({ search: { chat: (await createChat({ data: true })).id } })} disabled={!state?.chatgpt}>
+              <InfinityIcon /> OptChat
+            </Button>
+          </div>
           <Button variant="outline" onClick={() => setSearching(true)}>
             <Search /> Search messages
           </Button>
