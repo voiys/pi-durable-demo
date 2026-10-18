@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { BotIcon, ChevronLeft, MessageCircleDashedIcon, Plus, Search, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { z } from "zod";
 import { BotAvatar } from "@/components/bot-avatar";
 import { BotPanel } from "@/components/bot-panel";
@@ -62,6 +62,10 @@ function App() {
   const bots = state?.bots ?? [];
   const bot = bots.find((b) => b.id === search.bot);
   const subagent = bot && search.agent ? bot.agents.find((a) => a.session === search.agent) : undefined;
+  // Each view names itself (WCAG 2.4.2): the bot you're talking to, or what you're doing.
+  useEffect(() => {
+    document.title = `${search.new ? "New bot" : (subagent?.name ?? bot?.name ?? "Bots")} · pi durable`;
+  }, [search.new, subagent?.name, bot?.name]);
   const togglePanel = (panel: "details" | "search") => navigate({ search: (s) => ({ ...s, panel: s.panel === panel ? undefined : panel }) });
 
   return (
@@ -78,7 +82,8 @@ function App() {
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="New bot" disabled={!state?.chatgpt} onClick={() => navigate({ search: { new: true } })}>
+            {/* aria-disabled, not disabled: the tooltip saying why must stay reachable by keyboard. */}
+            <Button variant="ghost" size="icon" aria-label="New bot" aria-disabled={!state?.chatgpt} className="aria-disabled:opacity-50" onClick={() => state?.chatgpt && navigate({ search: { new: true } })}>
               <Plus />
             </Button>
           </TooltipTrigger>
@@ -95,7 +100,8 @@ function App() {
         {state && <NavUser user={user} chatgpt={state.chatgpt} />}
       </nav>
 
-      <main className="relative flex min-w-0 flex-1 flex-col">
+      {/* Below md the panel takes the thread's place: two columns don't fit beside the rail at phone widths. */}
+      <main className={cn("relative flex min-w-0 flex-1 flex-col", search.panel && "max-md:hidden")}>
         <header className="flex h-12 shrink-0 items-center justify-center px-3">
           {subagent && bot && (
             <Button variant="ghost" size="sm" className="absolute left-3" onClick={() => navigate({ search: (s) => ({ bot: bot.id, panel: s.panel }) })}>
@@ -147,7 +153,7 @@ function App() {
       </main>
 
       {(search.panel === "search" || (search.panel === "details" && bot)) && (
-        <aside aria-label={search.panel === "search" ? "Search" : "Bot details"} className="flex w-80 shrink-0 flex-col border-l">
+        <aside aria-label={search.panel === "search" ? "Search" : "Bot details"} className="flex w-80 shrink-0 flex-col border-l max-md:w-auto max-md:flex-1">
           <div className="flex h-12 shrink-0 items-center justify-between px-4">
             <h2 className="text-sm font-medium">{search.panel === "search" ? "Search" : "Details"}</h2>
             <Button variant="ghost" size="icon-sm" aria-label="Close panel" onClick={() => navigate({ search: (s) => ({ ...s, panel: undefined }) })}>

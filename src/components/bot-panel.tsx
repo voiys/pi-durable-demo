@@ -148,7 +148,7 @@ export function BotPanel({ bot, main, report, onOpenReport, onOpenAgent, onDelet
                 <span className="text-muted-foreground text-xs">{cronText(r.cron)}</span>
                 <span className="text-muted-foreground line-clamp-2 text-xs">{r.prompt}</span>
               </div>
-              <Button variant="ghost" size="icon-sm" aria-label={`Delete routine ${r.name}`} className="opacity-0 transition-opacity duration-150 group-hover/routine:opacity-100 focus-visible:opacity-100" onClick={() => deleteRoutine({ data: { botId: bot.id, id: r.id } }).catch(fail("delete routine"))}>
+              <Button variant="ghost" size="icon-sm" aria-label={`Delete routine ${r.name}`} className="opacity-0 transition-opacity duration-150 group-hover/routine:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100" onClick={() => deleteRoutine({ data: { botId: bot.id, id: r.id } }).catch(fail("delete routine"))}>
                 <Trash2 />
               </Button>
               <Switch checked={r.enabled} aria-label={`${r.name} on`} onCheckedChange={(on) => setRoutineEnabled({ data: { botId: bot.id, id: r.id, enabled: on } }).catch(fail("change routine"))} />

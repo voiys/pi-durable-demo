@@ -13,8 +13,8 @@
     --card-foreground: hsl(240 10% 3.9%);
     --popover: hsl(0 0% 100%);
     --popover-foreground: hsl(240 10% 3.9%);
-    /* iMessage blue (#007AFF): your bubbles, the send button, primary actions. */
-    --primary: hsl(211 100% 50%);
+    /* iMessage blue, one step darker than #007AFF so white bubble text reaches 4.75:1 (WCAG 1.4.3 needs 4.5:1). */
+    --primary: hsl(211 100% 45%);
     --primary-foreground: hsl(0 0% 100%);
     --secondary: hsl(240 4.8% 95.9%);
     --secondary-foreground: hsl(240 5.9% 10%);
@@ -37,7 +37,7 @@
     --card-foreground: hsl(0 0% 98%);
     --popover: hsl(240 10% 3.9%);
     --popover-foreground: hsl(0 0% 98%);
-    --primary: hsl(211 100% 52%);
+    --primary: hsl(211 100% 45%);
     --primary-foreground: hsl(0 0% 100%);
     --secondary: hsl(240 3.7% 15.9%);
     --secondary-foreground: hsl(0 0% 98%);
@@ -123,5 +123,5 @@
 
 @layer base {
     * { @apply border-border outline-ring/50; }
-    body { @apply bg-background text-foreground overscroll-none; }
+    body { @apply bg-background text-foreground overscroll-none antialiased; }
 }
