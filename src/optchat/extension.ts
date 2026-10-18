@@ -35,7 +35,8 @@ function runStart(messages: readonly Message[]) {
   return 0;
 }
 
-export function optchatExtension(memory: () => Memory) {
+/** `open` (re)opens the memory before a turn; tools then read the open one through `memory`. */
+export function optchatExtension(open: () => Promise<Memory>, memory: () => Memory) {
   return defineExtension({
     name: "optchat",
     sections: [{ key: "optchat", render: () => `${MASTER}\n\n${allowSearch(VIEW_DOC, true)}${SEARCH_DOC}`, tag: false }],
@@ -44,8 +45,9 @@ export function optchatExtension(memory: () => Memory) {
       hook(GenerationTask, {
         beforeRequest: async ({ messages }, api) => {
           if (api.conversationId !== ROOT_CONVERSATION_ID) return;
-          await memory().settle(); // never show a turn a placeholder line (recipe §6)
-          const view = memory().render();
+          const m = await open();
+          await m.settle(); // never show a turn a placeholder line (recipe §6)
+          const view = m.render();
           const from = runStart(messages);
           let injected = false;
           const run = messages.slice(from).map((m): Message => {

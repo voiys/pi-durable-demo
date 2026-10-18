@@ -16,7 +16,7 @@ import { Memory } from "../optchat/memory.ts";
 import { sqliteStore } from "../optchat/store.ts";
 import { MODEL, pickerOptions } from "./models.ts";
 import { oauth } from "./siwc.ts";
-import { DEFAULT_MODEL, type IndexRow, type ModelOption } from "../shared.ts";
+import { DEFAULT_MODEL, type IndexRow, type MemoryStats, type ModelOption } from "../shared.ts";
 
 const PREAMBLE = "You are a helpful, concise assistant.";
 
@@ -53,15 +53,22 @@ export class Chat extends DurableObject<Env> {
   #models: Models | undefined;
   #memory: Memory | undefined;
   /** OptChat memory of the main agent (v1.2), opened from this DO's SQLite on first use. */
+  /** The open OptChat memory; `openMemory` must have run this isolate (it does before every turn and log). */
   readonly memory = () => {
-    if (!this.#memory) {
-      const store = sqliteStore(this.ctx.storage.sql);
-      const compress = createCompressor(() => this.#models!, () => ({ provider: MODEL.provider, model: MODEL.id, thinking: "medium" }));
-      this.#memory = new Memory({ store, saved: store.load() }, compress);
-    }
+    if (!this.#memory) throw new Error("OptChat memory is not open");
     return this.#memory;
   };
-  readonly #optchat = optchatExtension(this.memory);
+  /** Opens the memory, or reopens it when the owner changed the view budget in the Debug section. */
+  readonly openMemory = async () => {
+    const { viewBytes } = await this.#user().debugSettings();
+    if (this.#memory?.budget === viewBytes) return this.#memory;
+    await this.#memory?.close();
+    const store = sqliteStore(this.ctx.storage.sql);
+    const compress = createCompressor(() => this.#models!, () => ({ provider: MODEL.provider, model: MODEL.id, thinking: "medium" }));
+    this.#memory = new Memory({ store, saved: store.load() }, compress, console.error, viewBytes);
+    return this.#memory;
+  };
+  readonly #optchat = optchatExtension(this.openMemory, this.memory);
 
   readonly harness = new PiHarness({
     harness: ({ storage, context }) => {
@@ -147,11 +154,18 @@ export class Chat extends DurableObject<Env> {
     await this.ctx.storage.deleteAll();
   }
 
+  /** Live numbers for the Debug section. */
+  async memoryStats(): Promise<MemoryStats> {
+    const m = await this.openMemory();
+    return { entries: m.root.length, nodes: m.tree.size, lines: m.view.length, viewBytes: m.size, budget: m.budget, pending: m.pending, building: m.active };
+  }
+
   /** Logs the root conversation's finished turn into the OptChat memory; it summarizes in the background. */
   async logTurn() {
     const logged = (this.ctx.storage.kv.get("optchat:logged") as number | undefined) ?? 0;
     const entries = await this.harness.session().messages();
-    for (const entry of entries.slice(logged)) logEntry(this.memory(), entry);
+    const memory = await this.openMemory();
+    for (const entry of entries.slice(logged)) logEntry(memory, entry);
     this.ctx.storage.kv.put("optchat:logged", entries.length);
     this.ctx.waitUntil(this.memory().settle(undefined, "tree"));
   }

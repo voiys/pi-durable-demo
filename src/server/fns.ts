@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { env } from "../env.ts";
-import { chatObjectName } from "../shared.ts";
+import { chatObjectName, type MemoryStats } from "../shared.ts";
 import { auth, requireUser } from "./auth.ts";
 import { pickerOptions } from "./models.ts";
 
@@ -21,6 +21,12 @@ export const disconnectChatGPT = createServerFn({ method: "POST" }).handler(asyn
 export const searchMessages = createServerFn({ method: "GET" })
   .validator((q: string) => q)
   .handler(async ({ data }) => (await (await user()).search(data)).map((h) => ({ ...h })));
+export const setDebug = createServerFn({ method: "POST" })
+  .validator((d: { viewBytes: number }) => d)
+  .handler(async ({ data }) => (await user()).setDebug(data));
+export const memoryStats = createServerFn({ method: "GET" })
+  .validator((chatId: string) => chatId)
+  .handler(async ({ data }): Promise<MemoryStats> => ({ ...(await (await chat(data)).memoryStats()) }));
 export const renameChat = createServerFn({ method: "POST" })
   .validator((d: { chatId: string; title: string }) => d)
   .handler(async ({ data }) => env.User.getByName(await owner(data.chatId)).renameChat(data.chatId, data.title));

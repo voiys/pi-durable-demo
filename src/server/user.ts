@@ -3,7 +3,7 @@ import { Agent } from "agents";
 import type { Env } from "../env.ts";
 import { authorize, complete, refresh, type Connection, type Pending } from "./siwc.ts";
 
-import { chatObjectName, type ChatSummary, type IndexRow, type SearchHit, type UserState } from "../shared.ts";
+import { chatObjectName, DEFAULT_DEBUG, VIEW_BUDGETS, type ChatSummary, type DebugSettings, type IndexRow, type SearchHit, type UserState } from "../shared.ts";
 
 /**
  * One per better-auth user (name = user id). Owns the chat list (synced to the
@@ -12,10 +12,12 @@ import { chatObjectName, type ChatSummary, type IndexRow, type SearchHit, type U
  * browser can read state but never write it.
  */
 export class User extends Agent<Env, UserState> {
-  initialState: UserState = { chats: [], chatgpt: null };
+  initialState: UserState = { chats: [], chatgpt: null, debug: DEFAULT_DEBUG };
   #refreshing: Promise<Connection> | null = null;
 
   onStart() {
+    // State saved before the debug settings existed gets them once.
+    if (!this.state.debug) this.setState({ ...this.state, debug: DEFAULT_DEBUG });
     this.sql`CREATE TABLE IF NOT EXISTS chats (id TEXT PRIMARY KEY, title TEXT NOT NULL, updated_at INTEGER NOT NULL)`;
     this.sql`CREATE TABLE IF NOT EXISTS chat_agents (chat_id TEXT NOT NULL, name TEXT NOT NULL, session TEXT NOT NULL, PRIMARY KEY (chat_id, name))`;
     this.sql`CREATE TABLE IF NOT EXISTS indexed (chat_id TEXT NOT NULL, entry_id TEXT NOT NULL, PRIMARY KEY (chat_id, entry_id))`;
@@ -72,6 +74,15 @@ export class User extends Agent<Env, UserState> {
     this.sql`DELETE FROM chat_agents WHERE chat_id = ${chatId}`;
     this.sql`DELETE FROM chats WHERE id = ${chatId}`;
     this.#publish();
+  }
+
+  debugSettings(): DebugSettings {
+    return this.state.debug;
+  }
+
+  setDebug(debug: DebugSettings) {
+    if (!VIEW_BUDGETS.includes(debug.viewBytes as (typeof VIEW_BUDGETS)[number])) throw new Error(`Unsupported view budget ${debug.viewBytes}`);
+    this.setState({ ...this.state, debug });
   }
 
   hasChat(chatId: string) {

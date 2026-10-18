@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import { ChatPane, DraftPane } from "@/components/chat-pane";
 import { ChatRow } from "@/components/chat-row";
+import { DebugSection } from "@/components/debug-section";
 import { NavUser } from "@/components/nav-user";
 import { ChatHits } from "@/components/search-hits";
 import { Button } from "@/components/ui/button";
@@ -106,6 +107,7 @@ function App() {
               ))}
             </SidebarMenu>
           </SidebarGroup>
+          {state && <DebugSection debug={state.debug} chatId={chat} />}
         </SidebarContent>
         <SidebarFooter>
           {state && <NavUser user={user} chatgpt={state.chatgpt} />}
