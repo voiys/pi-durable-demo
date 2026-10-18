@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { InputGroupButton } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Slider } from "@/components/ui/slider";
+import { StepSlider } from "@/components/step-slider";
 import { cn } from "@/lib/utils";
 import { modelOptions } from "@/server/fns";
 import type { ModelOption } from "@/shared";
@@ -22,7 +22,6 @@ export function ModelPicker({ model, thinkingLevel, onChange }: { model: string 
   }, []);
   const current = options.find((o) => o.id === model);
   const levels = current?.levels ?? [];
-  const step = levels.findIndex((l) => l === thinkingLevel);
   const label = `${current?.name ?? model ?? "Model"} · ${thinkingLevel ?? "-"}`;
   const change = (next: string, level: string) =>
     onChange(next, level).catch((e: Error) => toast.error("Couldn't change model", { description: e.message }));
@@ -52,16 +51,7 @@ export function ModelPicker({ model, thinkingLevel, onChange }: { model: string 
         </div>
         {levels.length > 1 && (
           <div className="border-t px-2 pt-3 pb-2">
-            <div className="mb-3 flex items-baseline justify-between text-xs">
-              <span className="text-muted-foreground">Reasoning</span>
-              <span className="font-medium">{thinkingLevel}</span>
-            </div>
-            <Slider aria-label="Reasoning effort" min={0} max={levels.length - 1} step={1} value={[step]} onValueCommit={([i]) => change(model!, levels[i])} />
-            <div className="text-muted-foreground mt-2 flex justify-between text-[10px]">
-              {levels.map((l) => (
-                <span key={l}>{l}</span>
-              ))}
-            </div>
+            <StepSlider label="Reasoning" steps={levels} value={levels.findIndex((l) => l === thinkingLevel)} onCommit={(i) => change(model!, levels[i])} ticks />
           </div>
         )}
       </PopoverContent>

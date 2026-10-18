@@ -61,7 +61,7 @@ export function ChatRow({ chat, active, onOpen, onDeleted, children }: { chat: C
         <SidebarMenuAction
           showOnHover
           aria-label={`Delete "${chat.title}"`}
-          className="hover:text-destructive transition-opacity duration-150 ease-out motion-reduce:transition-none"
+          className="hover:text-destructive transition-colors duration-150 ease-out motion-reduce:transition-none"
           onClick={() => setConfirming(true)}
         >
           <Trash2 />

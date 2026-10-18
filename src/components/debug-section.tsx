@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SidebarGroup, SidebarGroupContent, SidebarGroupLabel } from "@/components/ui/sidebar";
-import { Slider } from "@/components/ui/slider";
+import { StepSlider } from "@/components/step-slider";
 import { memoryStats, setDebug } from "@/server/fns";
 import { VIEW_BUDGETS, type DebugSettings, type MemoryStats } from "@/shared";
 
@@ -20,7 +20,6 @@ export function DebugSection({ debug }: { debug: DebugSettings }) {
     const t = setInterval(poll, 2000);
     return () => clearInterval(t);
   }, [open]);
-  const step = VIEW_BUDGETS.findIndex((b) => b === debug.viewBytes);
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
@@ -35,17 +34,11 @@ export function DebugSection({ debug }: { debug: DebugSettings }) {
         <CollapsibleContent>
           <SidebarGroupContent className="grid gap-3 px-2 pt-1 text-xs">
             <div className="grid gap-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">OptChat view budget</span>
-                <span className="font-medium tabular-nums">{kb(debug.viewBytes)}</span>
-              </div>
-              <Slider
-                aria-label="OptChat view budget"
-                min={0}
-                max={VIEW_BUDGETS.length - 1}
-                step={1}
-                value={[step]}
-                onValueCommit={([i]) => setDebug({ data: { viewBytes: VIEW_BUDGETS[i] } }).catch((e: Error) => toast.error("Couldn't save debug setting", { description: e.message }))}
+              <StepSlider
+                label="OptChat view budget"
+                steps={VIEW_BUDGETS.map(kb)}
+                value={VIEW_BUDGETS.findIndex((b) => b === debug.viewBytes)}
+                onCommit={(i) => setDebug({ data: { viewBytes: VIEW_BUDGETS[i] } }).catch((e: Error) => toast.error("Couldn't save debug setting", { description: e.message }))}
               />
               <p className="text-muted-foreground">All your chats. Lower it to watch older lines merge after a few messages.</p>
             </div>
