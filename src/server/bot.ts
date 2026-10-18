@@ -90,6 +90,7 @@ export class Bot extends DurableObject<Env> {
       this.registry.install(this.#routineTools);
       this.registry.install(webExtension(this.env.SEARXNG_URL));
       this.registry.install(this.#dataTools);
+      this.registry.install(this.#fleet); // offered only to the main bot's conversation (setMain)
       this.registry.install(this.#optchat);
       const models = planModels(() => this.#user().credential(), (c) => this.#user().refreshCredential(c));
       return Harness.open(storage, { models, registry: this.registry }, context);
@@ -104,7 +105,7 @@ export class Bot extends DurableObject<Env> {
     bots: async () => (await this.#user().listBots()).map((b) => ({ id: b.id, name: b.name })),
     sendToBot: (botId, message) => this.env.Bot.getByName(`${this.userId}--${botId}`).receive(this.#profile().name, message),
     lastOfBot: (botId) => this.env.Bot.getByName(`${this.userId}--${botId}`).lastAnswer(),
-    childExcluded: () => [this.#optchat, this.#routineTools],
+    childExcluded: () => [this.#optchat, this.#routineTools, this.#fleet],
     agentsChanged: async () =>
       this.#user().setAgents(this.botId, (await sessionAgents(this.#agentHost)).filter((a) => a.name !== "main").map(({ name, session }) => ({ name, session }))),
   };
@@ -134,8 +135,59 @@ export class Bot extends DurableObject<Env> {
 
   #profileSection() {
     const { name, instructions } = this.#profile();
-    return `You are the bot "${name}", one of the user's bots. Each bot is its own agent with its own conversation and memory; reach the others with the bots tool.${instructions ? `\n\nThe user's instructions for you:\n${instructions}` : ""}`;
+    const main = this.ctx.storage.kv.get("bot:main") === true;
+    const role = main
+      ? `You are "${name}", the user's main bot: you run their team of bots. Create, rename, re-instruct and delete bots with the fleet tool when the user asks (or when a new specialist would clearly help, after asking), and hand work to them with the bots tool.`
+      : `You are the bot "${name}", one of the user's bots. Each bot is its own agent with its own conversation and memory; reach the others with the bots tool.`;
+    return `${role}${instructions ? `\n\nThe user's instructions for you:\n${instructions}` : ""}`;
   }
+
+  /** Set by the User DO: the main bot's conversation gets the fleet tool, every other bot's has it removed. */
+  async setMain(main: boolean) {
+    this.ctx.storage.kv.put("bot:main", main);
+    const conversation = await this.harness.conversation(ROOT_SESSION);
+    await conversation.configure({ extensions: main ? { add: [this.#fleet] } : { remove: [this.#fleet] } }, BACKGROUND_CONTEXT);
+  }
+
+  /** The main bot's tool for managing the user's bots in natural language. */
+  readonly #fleet = defineExtension({
+    name: "fleet",
+    tools: [
+      defineTool({
+        name: "fleet",
+        description:
+          "Manage the user's bots (you are the main bot). Actions: list (names and instructions), create (name, instructions: " +
+          "what the bot is for, in the user's words), rename (name, newName), instruct (name, instructions: replaces them), " +
+          "delete (name: deletes the bot with its conversation, memory and data for good; only when the user asked).",
+        parameters: Type.Object({
+          action: Type.Union([Type.Literal("list"), Type.Literal("create"), Type.Literal("rename"), Type.Literal("instruct"), Type.Literal("delete")]),
+          name: Type.Optional(Type.String()),
+          newName: Type.Optional(Type.String()),
+          instructions: Type.Optional(Type.String()),
+        }),
+        replay: "unsafe",
+        execute: async ({ action, name, newName, instructions }) => {
+          const user = this.#user();
+          if (action === "list") return say((await user.listBots()).map((b) => `${b.name}${b.id === this.botId ? " (you)" : ""}: ${b.instructions || "(no instructions)"}`).join("\n"));
+          if (!name) return { ...say(`${action} needs a name`), isError: true };
+          if (action === "create") return say(`Created ${(await user.createBot(name, instructions ?? "")).name}.`);
+          const target = await user.botByName(name);
+          if (action === "rename") {
+            if (!newName) return { ...say("rename needs newName"), isError: true };
+            await user.updateBot(target.id, { name: newName });
+            return say(`Renamed ${target.name} to ${newName}.`);
+          }
+          if (action === "instruct") {
+            await user.updateBot(target.id, { instructions: instructions ?? "" });
+            return say(`Updated ${target.name}'s instructions.`);
+          }
+          if (target.id === this.botId) return { ...say("You can't delete yourself"), isError: true };
+          await user.deleteBot(target.id);
+          return say(`Deleted ${target.name}.`);
+        },
+      }),
+    ],
+  });
 
   /** Set by the User DO when the bot is created or edited. */
   setProfile(name: string, instructions: string) {

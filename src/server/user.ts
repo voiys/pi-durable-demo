@@ -10,7 +10,7 @@ import { BOT_COLORS, botObjectName, type BotSummary, type IndexRow, type SearchH
  * Every method here is Durable Object RPC only; nothing is `@callable`, so a browser can read state but never write it.
  */
 export class User extends Agent<Env, UserState> {
-  initialState: UserState = { bots: [], chatgpt: null };
+  initialState: UserState = { bots: [], mainBot: null, chatgpt: null };
   #refreshing: Promise<Connection> | null = null;
 
   onStart() {
@@ -50,6 +50,9 @@ export class User extends Agent<Env, UserState> {
     this.sql`INSERT INTO bots (id, name, instructions, color, updated_at) VALUES (${id}, ${trimmed}, ${instructions.trim()}, ${color}, ${Date.now()})`;
     this.#publish();
     await this.#sendProfile(id);
+    // The first bot is the main bot until the user picks another.
+    if (!this.state.mainBot) await this.setMainBot(id);
+    else await this.#botDO(id).setMain(false);
     return this.bot(id);
   }
 
@@ -67,10 +70,30 @@ export class User extends Agent<Env, UserState> {
     return this.sql`SELECT 1 FROM bots WHERE id = ${botId}`.length === 1;
   }
 
+  #botDO(botId: string) {
+    return this.env.Bot.getByName(botObjectName(this.name, botId));
+  }
+
   /** The Bot DO keeps its own copy of its name and instructions: its prompt is rendered synchronously. */
   #sendProfile(botId: string) {
     const { name, instructions } = this.bot(botId);
-    return this.env.Bot.getByName(botObjectName(this.name, botId)).setProfile(name, instructions);
+    return this.#botDO(botId).setProfile(name, instructions);
+  }
+
+  /** Makes `botId` the orchestrator: it gets the `fleet` tool, the previous main bot loses it. */
+  async setMainBot(botId: string) {
+    this.bot(botId);
+    const previous = this.state.mainBot;
+    this.setState({ ...this.state, mainBot: botId });
+    if (previous && previous !== botId && this.hasBot(previous)) await this.#botDO(previous).setMain(false);
+    await this.#botDO(botId).setMain(true);
+  }
+
+  /** The bot named `name` (case-insensitive), for the main bot's `fleet` tool. */
+  botByName(name: string): BotSummary {
+    const bot = this.state.bots.find((b) => b.name.toLowerCase() === name.trim().toLowerCase());
+    if (!bot) throw new Error(`No bot named ${name}`);
+    return bot;
   }
 
   async updateBot(botId: string, patch: { name?: string; instructions?: string }) {
@@ -96,6 +119,7 @@ export class User extends Agent<Env, UserState> {
   /** Wipes the Bot DO (conversation, memory, subagents, routines) and its BotData DO, then every trace of it here. */
   async deleteBot(botId: string) {
     this.bot(botId);
+    if (this.state.mainBot === botId) throw new Error("This is your main bot: make another bot main before deleting it");
     await this.env.Bot.getByName(botObjectName(this.name, botId)).wipe();
     await this.env.BotData.getByName(botObjectName(this.name, botId)).wipe();
     this.sql`DELETE FROM messages WHERE bot_id = ${botId}`;

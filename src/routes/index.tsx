@@ -10,6 +10,7 @@ import { NewBot } from "@/components/new-bot";
 import { connect, NavUser } from "@/components/nav-user";
 import { SearchPanel } from "@/components/search-panel";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/")({
     entry: z.string().optional(),
     panel: z.enum(["details", "search"]).optional(),
     new: z.boolean().optional(),
+    report: z.number().optional(),
   }),
   beforeLoad: async () => {
     const session = await getSession();
@@ -41,7 +43,8 @@ function RailBot({ label, active, onClick, children }: { label: string; active: 
           aria-label={label}
           aria-current={active || undefined}
           onClick={onClick}
-          className={cn("rounded-[14px] p-0.5 ring-2 transition-shadow duration-150 outline-none focus-visible:ring-ring", active ? "ring-foreground/70" : "ring-transparent")}
+          // flex: an inline button's line box would push the ring off the avatar's center.
+          className={cn("flex rounded-[15px] p-[3px] ring-2 transition-shadow duration-150 outline-none ring-inset focus-visible:ring-ring", active ? "ring-primary" : "ring-transparent")}
         >
           {children}
         </button>
@@ -64,12 +67,14 @@ function App() {
   return (
     <div className="flex h-svh">
       <nav aria-label="Bots" className="bg-sidebar flex w-16 shrink-0 flex-col items-center gap-3 border-r py-3">
-        <div className="flex min-h-0 flex-1 flex-col items-center gap-3 overflow-y-auto overscroll-contain">
-          {bots.map((b) => (
-            <RailBot key={b.id} label={b.name} active={b.id === search.bot && !search.new} onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}>
+        <div className="flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto overscroll-contain">
+          {/* The main bot sits on top, apart from the rest (Grok Bot). */}
+          {[...bots].sort((a, b) => Number(b.id === state?.mainBot) - Number(a.id === state?.mainBot)).map((b, i) => [
+            i === 1 && bots[0] && state?.mainBot && <Separator key="sep" className="my-1 w-8" />,
+            <RailBot key={b.id} label={b.id === state?.mainBot ? `${b.name} (main)` : b.name} active={b.id === search.bot && !search.new} onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}>
               <BotAvatar bot={b} />
-            </RailBot>
-          ))}
+            </RailBot>,
+          ])}
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -152,7 +157,17 @@ function App() {
           {search.panel === "search" ? (
             <SearchPanel bots={bots} onOpen={(h) => navigate({ search: { bot: h.botId, entry: h.entryId, panel: "search" } })} />
           ) : (
-            bot && <BotPanel key={bot.id} bot={bot} onOpenAgent={(session) => navigate({ search: (s) => ({ ...s, agent: session }) })} onDeleted={() => navigate({ search: {} })} />
+            bot && (
+              <BotPanel
+                key={bot.id}
+                bot={bot}
+                main={state?.mainBot === bot.id}
+                report={search.report}
+                onOpenReport={(report) => navigate({ search: (s) => ({ ...s, report }) })}
+                onOpenAgent={(session) => navigate({ search: (s) => ({ ...s, agent: session }) })}
+                onDeleted={() => navigate({ search: {} })}
+              />
+            )
           )}
         </aside>
       )}

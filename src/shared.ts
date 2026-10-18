@@ -7,7 +7,8 @@ export type SearchHit = { botId: string; entryId: string; role: string; snippet:
 /** FTS5 snippet() wraps each match in these control characters (src/server/user.ts search), so text never collides with them. */
 export const MATCH_OPEN = "\u0002";
 export const MATCH_CLOSE = "\u0003";
-export type UserState = { bots: BotSummary[]; chatgpt: { email: string } | null };
+/** `mainBot`: the orchestrator bot, the only one that can create, rename and delete bots (`fleet` tool). */
+export type UserState = { bots: BotSummary[]; mainBot: string | null; chatgpt: { email: string } | null };
 export type IndexRow = { entryId: string; role: "user" | "assistant"; text: string };
 
 /** OptChat view budgets the memory slider offers; 128 KB is the recipe's default (src/optchat/memory.ts VIEW). */

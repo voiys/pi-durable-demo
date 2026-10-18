@@ -1,11 +1,11 @@
+import { Link } from "@tanstack/react-router";
 import { BotIcon, CalendarClockIcon, CircleAlertIcon, CircleCheckIcon } from "lucide-react";
-import { agentTarget, botChip, Chip } from "@/components/ai/chips";
 import { Markdown } from "@/components/ai/markdown";
 import { BotAvatar } from "@/components/bot-avatar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { MessageAvatar, MessageContent, MessageHeader } from "@/components/ui/message";
-import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
+import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
 import type { BotSummary } from "@/shared";
 
 /** A message that is not the user's own words: user-role text the harness prefixes with where it came from
@@ -30,13 +30,14 @@ export function parseAgentMessage(text: string): AgentMsg | undefined {
 }
 
 /**
- * The content of an agent message, for a start-aligned Message. Other bots and subagents (message-scroller-group-chat):
- * avatar, the sender as a chip linking to its conversation, a markdown bubble. Subagent reports, failures and routines
- * firing (subagent-demo): one event line with the body on demand; a failure opens by default.
+ * An agent message in the thread, iMessage group-chat style. Another bot or a helper speaks like a person in a group:
+ * its face, its name above a gray bubble. A helper's report, a failure and a routine firing are one quiet line that
+ * opens to the text.
  */
 export function AgentMessage({ msg, bot, bots }: { msg: AgentMsg; bot: BotSummary; bots: BotSummary[] }) {
   if (msg.kind === "report" || msg.kind === "failed" || msg.kind === "routine") {
     const failed = msg.kind === "failed";
+    const title = msg.kind === "routine" ? `Routine: ${msg.from}` : failed ? `${msg.from} couldn't finish` : `${msg.from} reported back`;
     return (
       <MessageContent>
         <Trace>
@@ -44,16 +45,7 @@ export function AgentMessage({ msg, bot, bots }: { msg: AgentMsg; bot: BotSummar
             <TraceCollapsibleTrigger>
               <TraceLine status={failed ? "error" : undefined}>
                 <TraceIcon>{failed ? <CircleAlertIcon /> : msg.kind === "routine" ? <CalendarClockIcon /> : <CircleCheckIcon />}</TraceIcon>
-                <TraceTitle className="whitespace-normal">
-                  {msg.kind === "routine" ? (
-                    <>Routine {msg.from}</>
-                  ) : (
-                    <>
-                      Subagent <Chip label={msg.from} /> {failed ? "failed" : "answered"}
-                    </>
-                  )}
-                </TraceTitle>
-                {msg.kind === "report" && <TraceDescription>no reply needed</TraceDescription>}
+                <TraceTitle className="whitespace-normal">{title}</TraceTitle>
               </TraceLine>
             </TraceCollapsibleTrigger>
             <TraceCollapsibleContent>
@@ -65,13 +57,15 @@ export function AgentMessage({ msg, bot, bots }: { msg: AgentMsg; bot: BotSummar
     );
   }
   const sender = msg.kind === "bot" ? bots.find((b) => b.name.toLowerCase() === msg.from.toLowerCase()) : undefined;
+  const helper = msg.kind === "peer" ? bot.agents.find((a) => a.name === msg.from) : undefined;
+  const to = sender ? { bot: sender.id } : helper ? { bot: bot.id, agent: helper.session } : undefined;
   return (
     <>
-      <MessageAvatar>
+      <MessageAvatar className="self-end">
         {sender ? (
-          <BotAvatar bot={sender} size="sm" className="size-6 rounded-lg text-[10px]" />
+          <BotAvatar bot={sender} className="size-7 rounded-full text-xs" />
         ) : (
-          <Avatar size="sm">
+          <Avatar className="size-7">
             <AvatarFallback>
               <BotIcon className="size-3.5" />
             </AvatarFallback>
@@ -79,9 +73,17 @@ export function AgentMessage({ msg, bot, bots }: { msg: AgentMsg; bot: BotSummar
         )}
       </MessageAvatar>
       <MessageContent>
-        <MessageHeader>{msg.kind === "bot" ? botChip(bots, msg.from) : <Chip label={msg.from} to={agentTarget(bot, msg.from)} />}</MessageHeader>
-        <Bubble variant={msg.kind === "bot" ? "outline" : "tinted"}>
-          <BubbleContent>
+        <MessageHeader className="text-muted-foreground px-3 text-xs">
+          {to ? (
+            <Link to="/" search={to} className="hover:text-foreground transition-colors">
+              {sender?.name ?? msg.from}
+            </Link>
+          ) : (
+            msg.from
+          )}
+        </MessageHeader>
+        <Bubble variant="muted">
+          <BubbleContent className="rounded-[18px]">
             <Markdown>{msg.body}</Markdown>
           </BubbleContent>
         </Bubble>
