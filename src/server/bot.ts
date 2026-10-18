@@ -9,6 +9,7 @@ import { WebSockets } from "agents/websockets";
 import type { Env } from "../env.ts";
 import { PiSessionSockets } from "../pi/sockets.ts";
 import { agentExtensions, lastOf, retireSubagent, sessionAgents, type AgentHost } from "./agents.ts";
+import { webExtension } from "./web.ts";
 import { createCompressor } from "../optchat/compactor.ts";
 import { planLog, type LogCursor } from "../optchat/cursor.ts";
 import { logRows, optchatExtension, settledEnd } from "../optchat/extension.ts";
@@ -87,6 +88,8 @@ export class Bot extends DurableObject<Env> {
       this.registry.install(MainTools);
       this.registry.install(PeerTools);
       this.registry.install(this.#routineTools);
+      this.registry.install(webExtension(this.env.SEARXNG_URL));
+      this.registry.install(this.#dataTools);
       this.registry.install(this.#optchat);
       const models = planModels(() => this.#user().credential(), (c) => this.#user().refreshCredential(c));
       return Harness.open(storage, { models, registry: this.registry }, context);
@@ -339,9 +342,55 @@ export class Bot extends DurableObject<Env> {
     ],
   });
 
+  // --- research workspace: SQL and a library of reports, in this bot's BotData DO; every agent of the bot gets it ---
+
+  readonly #data = () => this.env.BotData.getByName(this.#name);
+
+  readonly #dataTools = defineExtension({
+    name: "workspace",
+    tools: [
+      defineTool({
+        name: "sql",
+        description:
+          "Your private SQLite database for research data: create tables for what you collect, insert rows, and analyze with " +
+          "SQL (JSON functions, window functions, FTS5 virtual tables all work). Runs any statements; the last one's rows come " +
+          "back as a table (200 rows max). Pass `schema: true` instead of a query to see your tables.",
+        parameters: Type.Object({ query: Type.Optional(Type.String()), schema: Type.Optional(Type.Boolean()) }),
+        replay: "unsafe",
+        execute: async ({ query, schema }) => {
+          if (schema) return say(await this.#data().schema());
+          if (!query) return { ...say("Pass a query, or schema: true"), isError: true };
+          return say(await this.#data().sql(query));
+        },
+      }),
+      defineTool({
+        name: "library",
+        description:
+          "Your library of reports, which the user reads in the bot's details panel. Actions: save (title, body: markdown; " +
+          "use it for finished research write-ups), list, read (id).",
+        parameters: Type.Object({
+          action: Type.Union([Type.Literal("save"), Type.Literal("list"), Type.Literal("read")]),
+          title: Type.Optional(Type.String()),
+          body: Type.Optional(Type.String()),
+          id: Type.Optional(Type.Integer()),
+        }),
+        replay: "unsafe",
+        execute: async ({ action, title, body, id }) => {
+          if (action === "list") return say((await this.#data().library()).map((r) => `${r.id}: ${r.title}`).join("\n") || "Library is empty.");
+          if (action === "read") return id === undefined ? { ...say("read needs an id"), isError: true } : say(await this.#data().report(id));
+          if (!title || !body) return { ...say("save needs a title and a body"), isError: true };
+          const saved = await this.#data().saveReport(title, body);
+          return say(`Saved report ${saved.id}: ${saved.title}`);
+        },
+      }),
+    ],
+  });
+
   /** What the details panel shows. */
-  details(): BotDetails {
-    return { memory: this.#stats(), routines: this.#routines() };
+  async details(): Promise<BotDetails> {
+    const data = this.#data();
+    const [library, tables] = await Promise.all([data.library(), data.tables()]);
+    return { memory: this.#stats(), routines: this.#routines(), library: library.map((r) => ({ ...r })), tables: tables.map((t) => ({ ...t })) };
   }
 
   // --- lifecycle ---

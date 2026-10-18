@@ -39,8 +39,15 @@ export const botDetails = createServerFn({ method: "GET" })
   .validator((botId: string) => botId)
   .handler(async ({ data }): Promise<BotDetails> => {
     const d = await (await bot(data)).details();
-    return { memory: { ...d.memory }, routines: d.routines.map((r) => ({ ...r })) };
+    return { memory: { ...d.memory }, routines: d.routines.map((r) => ({ ...r })), library: d.library.map((r) => ({ ...r })), tables: d.tables.map((t) => ({ ...t })) };
   });
+const botData = async (botId: string) => env.BotData.getByName(botObjectName(await owner(botId), botId));
+export const readReport = createServerFn({ method: "GET" })
+  .validator((d: { botId: string; id: number }) => d)
+  .handler(async ({ data }) => (await botData(data.botId)).report(data.id));
+export const deleteReport = createServerFn({ method: "POST" })
+  .validator((d: { botId: string; id: number }) => d)
+  .handler(async ({ data }) => (await botData(data.botId)).deleteReport(data.id));
 export const setMemoryBudget = createServerFn({ method: "POST" })
   .validator((d: { botId: string; bytes: number }) => d)
   .handler(async ({ data }) => (await bot(data.botId)).setMemoryBudget(data.bytes));

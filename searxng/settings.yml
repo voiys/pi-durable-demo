@@ -1,0 +1,8 @@
+# Local SearXNG for the bots' web_search tool (alchemy.run.ts). Defaults plus the JSON API; the secret comes from
+# SEARXNG_SECRET in .env.
+use_default_settings: true
+server:
+  limiter: false
+  image_proxy: false
+search:
+  formats: [html, json]

@@ -15,8 +15,10 @@ export const VIEW_BUDGETS = [2_000, 4_000, 8_000, 16_000, 32_000, 64_000, 128_00
 export type MemoryStats = { entries: number; nodes: number; lines: number; viewBytes: number; budget: number; pending: number; building: number };
 /** A prompt the bot gets on a cron schedule, in its own conversation. */
 export type Routine = { id: string; name: string; prompt: string; cron: string; enabled: boolean };
-/** What a bot's details panel shows, read from its Bot DO. */
-export type BotDetails = { memory: MemoryStats; routines: Routine[] };
+/** A report the bot saved to its library (BotData DO). */
+export type LibraryItem = { id: number; title: string; createdAt: number };
+/** What a bot's details panel shows, read from its Bot DO and BotData DO. */
+export type BotDetails = { memory: MemoryStats; routines: Routine[]; library: LibraryItem[]; tables: { name: string; rows: number }[] };
 
 /** Avatar colors a new bot picks from (Tailwind palette, so they read on both themes). */
 export const BOT_COLORS = ["#f97316", "#3b82f6", "#a855f7", "#ef4444", "#14b8a6", "#22c55e", "#eab308", "#ec4899"] as const;

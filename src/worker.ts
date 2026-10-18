@@ -4,6 +4,7 @@ import type { Env } from "./env.ts";
 import { auth } from "./server/auth.ts";
 
 export { Bot } from "./server/bot.ts";
+export { BotData } from "./server/bot-data.ts";
 export { User } from "./server/user.ts";
 
 /**

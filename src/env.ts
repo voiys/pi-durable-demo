@@ -1,5 +1,6 @@
 import * as cf from "cloudflare:workers";
 import type { Bot } from "./server/bot.ts";
+import type { BotData } from "./server/bot-data.ts";
 import type { User } from "./server/user.ts";
 
 // Hand-written to mirror alchemy.run.ts: Cloudflare.InferEnv<typeof Website> is circular
@@ -7,8 +8,10 @@ import type { User } from "./server/user.ts";
 export type Env = {
   DB: D1Database;
   BETTER_AUTH_SECRET: string;
+  SEARXNG_URL: string;
   User: DurableObjectNamespace<User>;
   Bot: DurableObjectNamespace<Bot>;
+  BotData: DurableObjectNamespace<BotData>;
 };
 
 // TanStack Start's dev server evaluates route modules outside the Worker request context,

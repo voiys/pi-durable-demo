@@ -93,10 +93,11 @@ export class User extends Agent<Env, UserState> {
     this.#publish();
   }
 
-  /** Wipes the Bot DO (conversation, memory, subagents, routines), then every trace of it here. */
+  /** Wipes the Bot DO (conversation, memory, subagents, routines) and its BotData DO, then every trace of it here. */
   async deleteBot(botId: string) {
     this.bot(botId);
     await this.env.Bot.getByName(botObjectName(this.name, botId)).wipe();
+    await this.env.BotData.getByName(botObjectName(this.name, botId)).wipe();
     this.sql`DELETE FROM messages WHERE bot_id = ${botId}`;
     this.sql`DELETE FROM indexed WHERE bot_id = ${botId}`;
     this.sql`DELETE FROM bot_agents WHERE bot_id = ${botId}`;
