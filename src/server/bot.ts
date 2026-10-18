@@ -77,6 +77,8 @@ export class Bot extends DurableObject<Env> {
             afterTools: (_assistant, _results, api) => (api.conversationId === ROOT_CONVERSATION_ID ? this.#log("all") : undefined),
             // The answer comes from the hook argument: pi commits it right after this hook runs.
             onYield: (answer, api) => {
+              const group = this.#groupOf(String(api.conversationId));
+              if (group) return void this.ctx.waitUntil(this.#replyToGroup(group, answer));
               if (api.conversationId !== ROOT_CONVERSATION_ID) return;
               this.ctx.waitUntil(this.syncIndex());
               this.ctx.waitUntil(this.#log("all", answer));
@@ -223,6 +225,55 @@ export class Bot extends DurableObject<Env> {
 
   retireSubagent(name: string) {
     return retireSubagent(this.#agentHost, name);
+  }
+
+  // --- group chats: each group runs in its own conversation of this bot, so the DM stays the DM ---
+
+  #groupOf(conversation: string): string | undefined {
+    return this.ctx.storage.kv.get(`group:of:${conversation}`) as string | undefined;
+  }
+
+  #group(groupId: string) {
+    return this.env.Group.getByName(`${this.userId}--${groupId}`);
+  }
+
+  /** A message in one of the user's groups this bot is in: answered in the group's own conversation (created on first
+   * use, without memory, routines or fleet tools), and logged to this bot's memory so it remembers the group. */
+  async receiveGroup(groupId: string, title: string, members: string[], from: string, text: string) {
+    let session = this.ctx.storage.kv.get(`group:session:${groupId}`) as string | undefined;
+    if (!session) {
+      session = (await this.harness.sessions.create()).id;
+      const conversation = await this.harness.conversation(session);
+      const { name, instructions } = this.#profile();
+      await conversation.configure(
+        {
+          extensions: { remove: [this.#optchat, this.#routineTools, this.#fleet] },
+          instructions:
+            `You are the bot "${name}" in the group chat "${title}" with the user and the bots ${members.filter((m) => m !== name).join(", ")}. ` +
+            `Messages come as "<sender>: <text>". Your final answer is posted to the group as your message, so write it for everyone; ` +
+            `mention a bot as @name to hand it something (only mentioned bots hear a bot's message). If you have nothing useful to add, ` +
+            `answer exactly PASS and nothing is posted.${instructions ? `\n\nThe user's instructions for you:\n${instructions}` : ""}`,
+        },
+        BACKGROUND_CONTEXT,
+      );
+      this.ctx.storage.kv.put(`group:session:${groupId}`, session);
+      this.ctx.storage.kv.put(`group:of:${session}`, groupId);
+      this.ctx.storage.kv.put(`group:title:${groupId}`, title);
+    }
+    this.#openMemory().append("work", `[group "${title}"] ${from}: ${text}`, new Date().toISOString());
+    this.#keepPumping();
+    await this.harness.session(session).submit(`${from}: ${text}`, { whenBusy: "followUp" });
+  }
+
+  async #replyToGroup(groupId: string, answer: AssistantMessage) {
+    const text = answer.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n").trim();
+    const pass = !text || /^PASS\W*$/i.test(text);
+    if (!pass) {
+      const title = this.ctx.storage.kv.get(`group:title:${groupId}`) as string;
+      this.#openMemory().append("work", `[group "${title}"] you (${this.#profile().name}): ${text}`, new Date().toISOString());
+      this.#keepPumping();
+    }
+    await this.#group(groupId).botReply(this.botId, pass ? null : text);
   }
 
   // --- memory: this bot's OptChat, in this object's SQLite ---

@@ -66,3 +66,19 @@ export const deleteRoutine = createServerFn({ method: "POST" })
 export const retireSubagent = createServerFn({ method: "POST" })
   .validator((d: { botId: string; name: string }) => d)
   .handler(async ({ data }) => (await bot(data.botId)).retireSubagent(data.name));
+
+/** The caller's group `groupId` (403 unless it is in the caller's catalog). */
+const group = async (groupId: string) => {
+  const { id } = await requireUser(getRequestHeaders());
+  if (!(await env.User.getByName(id).hasGroup(groupId))) throw new Response("Forbidden", { status: 403 });
+  return { user: env.User.getByName(id), room: env.Group.getByName(botObjectName(id, groupId)) };
+};
+export const createGroup = createServerFn({ method: "POST" })
+  .validator((d: { title: string; botIds: string[] }) => d)
+  .handler(async ({ data }) => ({ id: await (await user()).createGroup(data.title, data.botIds) }));
+export const postToGroup = createServerFn({ method: "POST" })
+  .validator((d: { groupId: string; text: string }) => d)
+  .handler(async ({ data }) => (await group(data.groupId)).room.userPost(data.text));
+export const disbandGroup = createServerFn({ method: "POST" })
+  .validator((groupId: string) => groupId)
+  .handler(async ({ data }) => (await group(data)).user.disbandGroup(data));

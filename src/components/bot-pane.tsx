@@ -178,7 +178,7 @@ function ScrollToMessage({ id }: { id?: string }) {
 
 /** The prompt input (AI Elements prompt-input on InputGroup), shaped like iMessage's: one rounded field, the model
  * picker inside it on the left, a round send (or stop) button on the right. Enter sends, Shift+Enter is a new line. */
-function Composer({ onSend, ready, running, onAbort, placeholder, tools }: { onSend: (text: string) => void; ready: boolean; running: boolean; onAbort: () => void; placeholder: string; tools?: ReactNode }) {
+export function Composer({ onSend, ready, running, onAbort, placeholder, tools }: { onSend: (text: string) => void; ready: boolean; running: boolean; onAbort: () => void; placeholder: string; tools?: ReactNode }) {
   const [draft, setDraft] = useState("");
   const send = () => {
     if (!draft.trim() || !ready) return;

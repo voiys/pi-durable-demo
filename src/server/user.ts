@@ -10,11 +10,12 @@ import { BOT_COLORS, botObjectName, type BotSummary, type IndexRow, type SearchH
  * Every method here is Durable Object RPC only; nothing is `@callable`, so a browser can read state but never write it.
  */
 export class User extends Agent<Env, UserState> {
-  initialState: UserState = { bots: [], mainBot: null, chatgpt: null };
+  initialState: UserState = { bots: [], groups: [], mainBot: null, chatgpt: null };
   #refreshing: Promise<Connection> | null = null;
 
   onStart() {
     this.sql`CREATE TABLE IF NOT EXISTS bots (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, instructions TEXT NOT NULL, color TEXT NOT NULL, updated_at INTEGER NOT NULL)`;
+    this.sql`CREATE TABLE IF NOT EXISTS groups (id TEXT PRIMARY KEY, title TEXT NOT NULL, members TEXT NOT NULL)`;
     this.sql`CREATE TABLE IF NOT EXISTS bot_agents (bot_id TEXT NOT NULL, name TEXT NOT NULL, session TEXT NOT NULL, PRIMARY KEY (bot_id, name))`;
     this.sql`CREATE TABLE IF NOT EXISTS indexed (bot_id TEXT NOT NULL, entry_id TEXT NOT NULL, PRIMARY KEY (bot_id, entry_id))`;
     this.sql`CREATE VIRTUAL TABLE IF NOT EXISTS messages USING fts5(text, bot_id UNINDEXED, entry_id UNINDEXED, role UNINDEXED, tokenize = 'porter unicode61')`;
@@ -23,8 +24,10 @@ export class User extends Agent<Env, UserState> {
   #publish() {
     const bots = this.sql<{ id: string; name: string; instructions: string; color: string; updated_at: number }>`SELECT * FROM bots ORDER BY rowid`;
     const agents = this.sql<{ bot_id: string; name: string; session: string }>`SELECT * FROM bot_agents ORDER BY rowid`;
+    const groups = this.sql<{ id: string; title: string; members: string }>`SELECT * FROM groups ORDER BY rowid`;
     this.setState({
       ...this.state,
+      groups: groups.map((g) => ({ id: g.id, title: g.title, members: JSON.parse(g.members) as string[] })),
       bots: bots.map((b) => ({
         id: b.id,
         name: b.name,
@@ -120,12 +123,39 @@ export class User extends Agent<Env, UserState> {
   async deleteBot(botId: string) {
     this.bot(botId);
     if (this.state.mainBot === botId) throw new Error("This is your main bot: make another bot main before deleting it");
+    const group = this.state.groups.find((g) => g.members.includes(botId));
+    if (group) throw new Error(`This bot is in the group "${group.title}": disband it first`);
     await this.env.Bot.getByName(botObjectName(this.name, botId)).wipe();
     await this.env.BotData.getByName(botObjectName(this.name, botId)).wipe();
     this.sql`DELETE FROM messages WHERE bot_id = ${botId}`;
     this.sql`DELETE FROM indexed WHERE bot_id = ${botId}`;
     this.sql`DELETE FROM bot_agents WHERE bot_id = ${botId}`;
     this.sql`DELETE FROM bots WHERE id = ${botId}`;
+    this.#publish();
+  }
+
+  // --- groups ---
+
+  /** A room for some of the user's bots; it lives until the user disbands it. */
+  async createGroup(title: string, botIds: string[]) {
+    const members = [...new Set(botIds)].map((id) => this.bot(id));
+    const id = crypto.randomUUID();
+    const name = title.trim() || members.map((m) => m.name).join(", ");
+    await this.env.Group.getByName(botObjectName(this.name, id)).init(name, members.map(({ id, name }) => ({ id, name })));
+    this.sql`INSERT INTO groups (id, title, members) VALUES (${id}, ${name}, ${JSON.stringify(members.map((m) => m.id))})`;
+    this.#publish();
+    return id;
+  }
+
+  hasGroup(groupId: string) {
+    return this.sql`SELECT 1 FROM groups WHERE id = ${groupId}`.length === 1;
+  }
+
+  /** Deletes the room and its transcript. Each member keeps what it remembers of it (its own memory). */
+  async disbandGroup(groupId: string) {
+    if (!this.hasGroup(groupId)) throw new Error(`Unknown group ${groupId}`);
+    await this.env.Group.getByName(botObjectName(this.name, groupId)).wipe();
+    this.sql`DELETE FROM groups WHERE id = ${groupId}`;
     this.#publish();
   }
 

@@ -1,21 +1,23 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
-import { BotIcon, ChevronLeft, MessageCircleDashedIcon, Plus, Search, X } from "lucide-react";
+import { BotIcon, ChevronLeft, MessageCircleDashedIcon, Plus, Search, UsersIcon, X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { z } from "zod";
 import { BotAvatar } from "@/components/bot-avatar";
 import { BotPanel } from "@/components/bot-panel";
 import { BotPane } from "@/components/bot-pane";
+import { GroupAvatar, GroupPane, GroupPanel, NewGroup } from "@/components/group-pane";
 import { NewBot } from "@/components/new-bot";
 import { connect, NavUser } from "@/components/nav-user";
 import { SearchPanel } from "@/components/search-panel";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { getSession } from "@/server/fns";
-import type { UserState } from "@/shared";
+import type { GroupSummary, UserState } from "@/shared";
 
 export const Route = createFileRoute("/")({
   validateSearch: z.object({
@@ -23,7 +25,8 @@ export const Route = createFileRoute("/")({
     agent: z.string().optional(),
     entry: z.string().optional(),
     panel: z.enum(["details", "search"]).optional(),
-    new: z.boolean().optional(),
+    new: z.enum(["bot", "group"]).optional(),
+    group: z.string().optional(),
     report: z.number().optional(),
   }),
   beforeLoad: async () => {
@@ -62,10 +65,12 @@ function App() {
   const bots = state?.bots ?? [];
   const bot = bots.find((b) => b.id === search.bot);
   const subagent = bot && search.agent ? bot.agents.find((a) => a.session === search.agent) : undefined;
+  const group = state?.groups?.find((g) => g.id === search.group);
+  const membersOf = (g: GroupSummary) => g.members.flatMap((id) => bots.filter((b) => b.id === id));
   // Each view names itself (WCAG 2.4.2): the bot you're talking to, or what you're doing.
   useEffect(() => {
-    document.title = `${search.new ? "New bot" : (subagent?.name ?? bot?.name ?? "Bots")} · pi durable`;
-  }, [search.new, subagent?.name, bot?.name]);
+    document.title = `${search.new ? `New ${search.new}` : (subagent?.name ?? bot?.name ?? group?.title ?? "Bots")} · pi durable`;
+  }, [search.new, subagent?.name, bot?.name, group?.title]);
   const togglePanel = (panel: "details" | "search") => navigate({ search: (s) => ({ ...s, panel: s.panel === panel ? undefined : panel }) });
 
   return (
@@ -79,16 +84,42 @@ function App() {
               <BotAvatar bot={b} />
             </RailBot>,
           ])}
+          {(state?.groups ?? []).length > 0 && <Separator className="my-1 w-8" />}
+          {state?.groups?.map((g) => (
+            <RailBot key={g.id} label={g.title} active={g.id === search.group} onClick={() => navigate({ search: (s) => ({ group: g.id, panel: s.panel === "search" ? "search" : undefined }) })}>
+              <GroupAvatar members={membersOf(g)} />
+            </RailBot>
+          ))}
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {/* aria-disabled, not disabled: the tooltip saying why must stay reachable by keyboard. */}
-            <Button variant="ghost" size="icon" aria-label="New bot" aria-disabled={!state?.chatgpt} className="aria-disabled:opacity-50" onClick={() => state?.chatgpt && navigate({ search: { new: true } })}>
-              <Plus />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="right">{state?.chatgpt ? "New bot" : "Connect ChatGPT first"}</TooltipContent>
-        </Tooltip>
+        {state?.chatgpt ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="New bot or group">
+                <Plus />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="right" align="end">
+              <DropdownMenuGroup>
+                <DropdownMenuItem onSelect={() => navigate({ search: { new: "bot" } })}>
+                  <BotIcon /> New bot
+                </DropdownMenuItem>
+                <DropdownMenuItem disabled={bots.length < 2} onSelect={() => navigate({ search: { new: "group" } })}>
+                  <UsersIcon /> New group
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {/* aria-disabled, not disabled: the tooltip saying why must stay reachable by keyboard. */}
+              <Button variant="ghost" size="icon" aria-label="New bot" aria-disabled className="aria-disabled:opacity-50">
+                <Plus />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Connect ChatGPT first</TooltipContent>
+          </Tooltip>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Search all bots" aria-pressed={search.panel === "search"} onClick={() => togglePanel("search")}>
@@ -108,6 +139,12 @@ function App() {
               <ChevronLeft /> {bot.name}
             </Button>
           )}
+          {group && !search.new && (
+            <Button variant="secondary" size="sm" className="max-w-64 rounded-full" aria-pressed={search.panel === "details"} onClick={() => togglePanel("details")}>
+              <GroupAvatar members={membersOf(group)} size="sm" />
+              <span className="truncate">{group.title}</span>
+            </Button>
+          )}
           {bot && !search.new && (
             <Button variant="secondary" size="sm" className="max-w-64 rounded-full" aria-pressed={search.panel === "details"} onClick={() => togglePanel("details")}>
               {subagent ? <BotIcon /> : <BotAvatar bot={bot} size="sm" />}
@@ -115,8 +152,12 @@ function App() {
             </Button>
           )}
         </header>
-        {search.new ? (
+        {search.new === "bot" ? (
           <NewBot onCreated={(id) => navigate({ search: { bot: id } })} />
+        ) : search.new === "group" ? (
+          <NewGroup bots={bots} onCreated={(id) => navigate({ search: { group: id } })} />
+        ) : group ? (
+          <GroupPane key={group.id} userId={user.id} groupId={group.id} bots={bots} />
         ) : bot ? (
           <BotPane key={`${bot.id}:${search.agent ?? "main"}`} userId={user.id} bot={bot} session={search.agent} entry={search.entry} bots={bots} />
         ) : state && !state.chatgpt ? (
@@ -143,7 +184,7 @@ function App() {
                 <EmptyDescription>Each bot is one agent with one endless conversation and its own memory.</EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
-                <Button onClick={() => navigate({ search: { new: true } })}>
+                <Button onClick={() => navigate({ search: { new: "bot" } })}>
                   <Plus /> New bot
                 </Button>
               </EmptyContent>
@@ -152,8 +193,8 @@ function App() {
         )}
       </main>
 
-      {(search.panel === "search" || (search.panel === "details" && bot)) && (
-        <aside aria-label={search.panel === "search" ? "Search" : "Bot details"} className="flex w-80 shrink-0 flex-col border-l max-md:w-auto max-md:flex-1">
+      {(search.panel === "search" || (search.panel === "details" && (bot || group))) && (
+        <aside aria-label={search.panel === "search" ? "Search" : group ? "Group details" : "Bot details"} className="flex w-80 shrink-0 flex-col border-l max-md:w-auto max-md:flex-1">
           <div className="flex h-12 shrink-0 items-center justify-between px-4">
             <h2 className="text-sm font-medium">{search.panel === "search" ? "Search" : "Details"}</h2>
             <Button variant="ghost" size="icon-sm" aria-label="Close panel" onClick={() => navigate({ search: (s) => ({ ...s, panel: undefined }) })}>
@@ -162,6 +203,8 @@ function App() {
           </div>
           {search.panel === "search" ? (
             <SearchPanel bots={bots} onOpen={(h) => navigate({ search: { bot: h.botId, entry: h.entryId, panel: "search" } })} />
+          ) : group ? (
+            <GroupPanel key={group.id} group={group} bots={bots} onDisbanded={() => navigate({ search: {} })} />
           ) : (
             bot && (
               <BotPanel

@@ -7,8 +7,14 @@ export type SearchHit = { botId: string; entryId: string; role: string; snippet:
 /** FTS5 snippet() wraps each match in these control characters (src/server/user.ts search), so text never collides with them. */
 export const MATCH_OPEN = "\u0002";
 export const MATCH_CLOSE = "\u0003";
+/** A group chat in the user's catalog: the room's title and member bot ids. */
+export type GroupSummary = { id: string; title: string; members: string[] };
+/** One message in a group: `from` is a member bot's id, or null for the user. */
+export type GroupMessage = { id: string; from: string | null; text: string; ts: number };
+/** A group's synced state (Group DO): `typing` are the bots working on what they just heard. */
+export type GroupState = { title: string; members: { id: string; name: string }[]; messages: GroupMessage[]; typing: string[] };
 /** `mainBot`: the orchestrator bot, the only one that can create, rename and delete bots (`fleet` tool). */
-export type UserState = { bots: BotSummary[]; mainBot: string | null; chatgpt: { email: string } | null };
+export type UserState = { bots: BotSummary[]; groups: GroupSummary[]; mainBot: string | null; chatgpt: { email: string } | null };
 export type IndexRow = { entryId: string; role: "user" | "assistant"; text: string };
 
 /** OptChat view budgets the memory slider offers; 128 KB is the recipe's default (src/optchat/memory.ts VIEW). */

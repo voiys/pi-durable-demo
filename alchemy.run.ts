@@ -4,7 +4,7 @@ import * as Docker from "alchemy/Docker";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { resolve } from "node:path";
-import type { Bot, BotData, User } from "./src/worker.ts";
+import type { Bot, BotData, Group, User } from "./src/worker.ts";
 import { PORT } from "./src/origin.ts";
 
 process.loadEnvFile();
@@ -25,6 +25,7 @@ export const Website = Cloudflare.Website.Vite("Website", {
     User: Cloudflare.DurableObject<User>("User"),
     Bot: Cloudflare.DurableObject<Bot>("Bot"),
     BotData: Cloudflare.DurableObject<BotData>("BotData"),
+    Group: Cloudflare.DurableObject<Group>("Group"),
   },
   compatibility: { date: "2026-10-01", flags: ["nodejs_compat"] },
   dev: { host: "127.0.0.1", port: PORT, strictPort: true },
