@@ -20,6 +20,8 @@ import type { IndexRow, ModelOption } from "../shared.ts";
 // A reasoning model: pi sends the system prompt as a developer item only for those,
 // and SIWC rejects role:system (pi-source-v1.3.0 packages/ai/src/api/openai-responses-shared.ts:231-243).
 export const MODEL = { provider: "openai", id: "gpt-6.1-sol" } as const;
+/** The models the picker offers, in this order (user's pick, DECISIONS.md); each must also be on the ChatGPT plan. */
+const PICKER = ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna"];
 const PREAMBLE = "You are a helpful, concise assistant.";
 
 function text(entry: EntryRecord): string {
@@ -119,10 +121,12 @@ export class Chat extends DurableObject<Env> {
   /** Reasoning models the owner's ChatGPT account can use, with each one's thinking levels. */
   async modelOptions(): Promise<ModelOption[]> {
     const available = new Set(await this.#user().availableModels());
-    return openaiProvider()
-      .getModels()
-      .filter((m) => m.reasoning && available.has(m.id))
-      .map((m) => ({ id: m.id, name: m.name, levels: getSupportedThinkingLevels(m) }));
+    const catalog = openaiProvider().getModels();
+    return PICKER.filter((id) => available.has(id)).map((id) => {
+      const m = catalog.find((c) => c.id === id);
+      if (!m?.reasoning) throw new Error(`${id} is not a reasoning model in pi's catalog`);
+      return { id, name: m.name, levels: getSupportedThinkingLevels(m) };
+    });
   }
 
   async configureModel(id: string, thinkingLevel: string) {
@@ -145,11 +149,12 @@ export class Chat extends DurableObject<Env> {
     return (await lastOf(this.harness, ROOT_SESSION)).text;
   }
 
-  /** Deletes all of this chat's storage and alarm, then drops the isolate so nothing in memory outlives it. */
+  /** Stops any running turn, then deletes all of this chat's storage and its alarm. The User DO drops it from the
+   * catalog right after, so the gate never routes to this name again. */
   async wipe() {
+    await this.harness.session().abort();
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
-    this.ctx.abort("chat deleted");
   }
 
   /** Logs the root conversation's finished turn into the OptChat memory; it summarizes in the background. */

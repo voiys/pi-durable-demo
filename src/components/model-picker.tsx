@@ -1,24 +1,18 @@
-import { ChevronDownIcon } from "lucide-react";
+import { Brain, Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { InputGroupButton } from "@/components/ui/input-group";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Slider } from "@/components/ui/slider";
+import { cn } from "@/lib/utils";
 import { chatModels, setChatModel } from "@/server/fns";
 import type { ModelOption } from "@/shared";
 
-/** AI Elements model-selector, inside the prompt input: two dropdowns (model, effort) showing pi's own session state. */
 // The list depends on the ChatGPT account, not the chat: one fetch per page load, shown from cache on every later mount.
 let cached: ModelOption[] | undefined;
 let loading: Promise<ModelOption[]> | undefined;
 
+/** A brain button in the prompt input: pick the model, then the reasoning effort on a stepped slider of that model's levels. */
 export function ModelPicker({ chatId, model, thinkingLevel }: { chatId: string; model: string | null; thinkingLevel: string | null }) {
   const [options, setOptions] = useState<ModelOption[]>(cached ?? []);
   useEffect(() => {
@@ -26,55 +20,50 @@ export function ModelPicker({ chatId, model, thinkingLevel }: { chatId: string; 
     loading.then(setOptions, (e: Error) => ((loading = undefined), toast.error(e.message)));
   }, [chatId]);
   const current = options.find((o) => o.id === model);
+  const levels = current?.levels ?? [];
+  const step = levels.findIndex((l) => l === thinkingLevel);
+  const label = `${current?.name ?? model ?? "Model"} · ${thinkingLevel ?? "-"}`;
   const change = (next: string, level: string) =>
     setChatModel({ data: { chatId, model: next, thinkingLevel: level } }).catch((e: Error) => toast.error(e.message));
 
   return (
-    <div className="flex items-center gap-1">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <InputGroupButton variant="ghost" aria-label={`Model: ${current?.name ?? "none"}`}>
-            {current?.name ?? model ?? "Model"}
-            <ChevronDownIcon />
-          </InputGroupButton>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuRadioGroup
-            value={model ?? ""}
-            onValueChange={(id) => {
+    <Popover>
+      <PopoverTrigger asChild>
+        <InputGroupButton variant="ghost" size="icon-xs" aria-label={`Model and reasoning: ${label}`} title={label}>
+          <Brain />
+        </InputGroupButton>
+      </PopoverTrigger>
+      <PopoverContent align="start" side="top" className="w-64 p-1">
+        <div role="radiogroup" aria-label="Model" className="grid">
+          {options.map((o) => (
+            <button
+              key={o.id}
+              role="radio"
+              aria-checked={o.id === model}
+              className="hover:bg-accent flex h-8 items-center gap-2 rounded-sm px-2 text-left text-sm"
               // Keep the effort when the new model supports it, else take the new model's lowest level.
-              const levels = options.find((o) => o.id === id)!.levels;
-              void change(id, levels.find((l) => l === thinkingLevel) ?? levels[0]);
-            }}
-          >
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>Model</DropdownMenuLabel>
-              {options.map((o) => (
-                <DropdownMenuRadioItem key={o.id} value={o.id}>{o.name}</DropdownMenuRadioItem>
+              onClick={() => change(o.id, o.levels.find((l) => l === thinkingLevel) ?? o.levels[0])}
+            >
+              <span className="flex-1 truncate">{o.name}</span>
+              <Check className={cn("size-4", o.id !== model && "invisible")} />
+            </button>
+          ))}
+        </div>
+        {levels.length > 1 && (
+          <div className="border-t px-2 pt-3 pb-2">
+            <div className="mb-3 flex items-baseline justify-between text-xs">
+              <span className="text-muted-foreground">Reasoning</span>
+              <span className="font-medium">{thinkingLevel}</span>
+            </div>
+            <Slider aria-label="Reasoning effort" min={0} max={levels.length - 1} step={1} value={[step]} onValueCommit={([i]) => change(model!, levels[i])} />
+            <div className="text-muted-foreground mt-2 flex justify-between text-[10px]">
+              {levels.map((l) => (
+                <span key={l}>{l}</span>
               ))}
-            </DropdownMenuGroup>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <InputGroupButton variant="ghost" aria-label={`Effort: ${thinkingLevel ?? "none"}`}>
-            <span className="text-muted-foreground">Effort</span>
-            {thinkingLevel ?? "-"}
-            <ChevronDownIcon />
-          </InputGroupButton>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Effort</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={thinkingLevel ?? ""} onValueChange={(level) => void change(model!, level)}>
-              {(current?.levels ?? []).map((l) => (
-                <DropdownMenuRadioItem key={l} value={l}>{l}</DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+            </div>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
