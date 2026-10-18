@@ -1,4 +1,5 @@
 import { ArrowUp, Square } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Markdown, TraceGroup, type ToolResult } from "@/components/ai/parts";
 import { ModelPicker } from "@/components/model-picker";
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/message-scroller";
 import type { PiMessage, PiMessagePart } from "@/pi/transcript";
 import { usePiSession } from "@/pi/use-pi-session";
+import { SLIDE_UP } from "@/lib/message-animations";
 import { cn } from "@/lib/utils";
 import { createChat, setChatModel } from "@/server/fns";
 import { chatObjectName, DEFAULT_MODEL } from "@/shared";
@@ -45,7 +47,9 @@ function groupParts(parts: readonly PiMessagePart[]) {
   return groups;
 }
 
-function Row({ message, results, highlight }: { message: PiMessage; results: Map<string, ToolResult>; highlight: boolean }) {
+const MotionMessageScrollerItem = motion.create(MessageScrollerItem);
+
+function Row({ message, results, highlight, enter }: { message: PiMessage; results: Map<string, ToolResult>; highlight: boolean; enter: boolean }) {
   if (message.role !== "user" && message.role !== "assistant") return null;
   const live = message.id === "live";
   let content;
@@ -68,7 +72,7 @@ function Row({ message, results, highlight }: { message: PiMessage; results: Map
       <>
         {groups.map((g, i) =>
           "text" in g ? (
-            <Markdown key={i}>{g.text}</Markdown>
+            <Markdown key={i} streaming={live && i === groups.length - 1}>{g.text}</Markdown>
           ) : (
             <TraceGroup key={i} parts={g.trace} results={results} live={live && i === groups.length - 1} />
           ),
@@ -78,11 +82,17 @@ function Row({ message, results, highlight }: { message: PiMessage; results: Map
     );
   }
   return (
-    <MessageScrollerItem messageId={message.id} scrollAnchor={message.role === "user"}>
+    <MotionMessageScrollerItem
+      messageId={message.id}
+      scrollAnchor={message.role === "user"}
+      variants={SLIDE_UP}
+      initial={enter && message.role === "user" ? "initial" : false}
+      animate="animate"
+    >
       <Message id={`entry-${message.id}`} align={align} className={cn(highlight && "rounded-lg ring-2 ring-yellow-300 ring-offset-4 ring-offset-background")}>
         <MessageContent>{content}</MessageContent>
       </Message>
-    </MessageScrollerItem>
+    </MotionMessageScrollerItem>
   );
 }
 
@@ -173,19 +183,22 @@ export function ChatPane({ userId, chatId, session: sessionId, entry }: { userId
     firstMessages.delete(chatId);
     session.submit(first);
   }, [chatId, session.status, session.submit]);
+  // History doesn't animate in; only messages sent after this pane opened do (pi timestamps them on commit).
+  const reduceMotion = useReducedMotion();
+  const [openedAt] = useState(Date.now);
   const results = new Map<string, ToolResult>();
   for (const m of session.messages)
     for (const p of m.parts) if (p.type === "tool-result") results.set(p.id, p);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <MessageScrollerProvider>
+      <MessageScrollerProvider autoScroll>
         <MessageScroller>
           <MessageScrollerViewport>
             <MessageScrollerContent className="mx-auto w-full max-w-3xl p-4">
-              {session.messages.map((m) => (
-                <Row key={m.id} message={m} results={results} highlight={m.id === entry} />
+              {/* Keyed by position: the streamed reply keeps its row when pi commits it under its entry id. */}
+              {[...session.messages, ...(session.live ? [session.live] : [])].map((m, i) => (
+                <Row key={i} message={m} results={results} highlight={m.id === entry} enter={!reduceMotion && m.timestamp >= openedAt} />
               ))}
-              {session.live && <Row message={session.live} results={results} highlight={false} />}
               {session.error && <p className="text-destructive text-sm">{session.error}</p>}
             </MessageScrollerContent>
           </MessageScrollerViewport>

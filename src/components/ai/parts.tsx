@@ -16,8 +16,13 @@ import type { PiMessagePart } from "@/pi/transcript";
 type ToolCall = Extract<PiMessagePart, { type: "tool-call" }>;
 export type ToolResult = Extract<PiMessagePart, { type: "tool-result" }>;
 
-export function Markdown({ children }: { children: string }) {
-  return <Streamdown className="w-full min-w-0 overflow-hidden">{children}</Streamdown>;
+/** Assistant text. While `streaming`, Streamdown fades new words in and shows a caret (its own `animated` mode). */
+export function Markdown({ children, streaming = false }: { children: string; streaming?: boolean }) {
+  return (
+    <Streamdown className="w-full min-w-0 overflow-hidden" isAnimating={streaming} animated caret={streaming ? "block" : undefined}>
+      {children}
+    </Streamdown>
+  );
 }
 
 /** pi reasoning (reasoning-demo): a collapsible "Thinking" line. */
