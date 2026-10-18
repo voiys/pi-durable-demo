@@ -1,15 +1,16 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Credential, CredentialStore } from "@earendil-works/pi-ai";
-import { createModels } from "@earendil-works/pi-ai/models";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { createModels, getSupportedThinkingLevels } from "@earendil-works/pi-ai/models";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { createRegistry, GenerationTask, Harness, hook, type EntryRecord } from "@earendil-works/pi-durable";
-import { PiHarness } from "agents/harness/pi";
+import { PiHarness, ROOT_SESSION } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env.ts";
 import { PiSessionSockets } from "../pi/sockets.ts";
 import { oauth } from "./siwc.ts";
-import type { IndexRow } from "../shared.ts";
+import type { IndexRow, ModelOption } from "../shared.ts";
 
 // A reasoning model: pi sends the system prompt as a developer item only for those,
 // and SIWC rejects role:system (pi-source-v1.3.0 packages/ai/src/api/openai-responses-shared.ts:231-243).
@@ -72,6 +73,24 @@ export class Chat extends DurableObject<Env> {
 
   async onStart() {
     await this.sockets.reattach();
+  }
+
+  /** Reasoning models the owner's ChatGPT account can use, with each one's thinking levels. */
+  async modelOptions(): Promise<ModelOption[]> {
+    const available = new Set(await this.#user().availableModels());
+    return openaiProvider()
+      .getModels()
+      .filter((m) => m.reasoning && available.has(m.id))
+      .map((m) => ({ id: m.id, name: m.name, levels: getSupportedThinkingLevels(m) }));
+  }
+
+  async configureModel(id: string, thinkingLevel: string) {
+    const option = (await this.modelOptions()).find((m) => m.id === id);
+    if (!option) throw new Error(`Model ${id} is not available on this ChatGPT plan`);
+    const level = option.levels.find((l) => l === thinkingLevel);
+    if (!level) throw new Error(`${id} has no thinking level "${thinkingLevel}"`);
+    const conversation = await this.harness.conversation(ROOT_SESSION);
+    await conversation.configure({ model: { provider: MODEL.provider, modelId: id }, thinkingLevel: level }, BACKGROUND_CONTEXT);
   }
 
   /** Pushes user/assistant entries not yet pushed to the User DO's search index. */

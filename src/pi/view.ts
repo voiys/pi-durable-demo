@@ -38,6 +38,8 @@ export type PiSessionView = {
     readonly provider: string;
     readonly modelId: string;
   } | null;
+  /** Demo addition: the session's reasoning effort, shown next to the model. */
+  readonly thinkingLevel: string | null;
   readonly error: string | null;
 };
 
@@ -54,6 +56,7 @@ export const EMPTY_VIEW: PiSessionView = {
   queued: 0,
   retry: null,
   model: null,
+  thinkingLevel: null,
   error: null
 };
 
@@ -155,6 +158,7 @@ export function reduceView(
         queued: event.inbox.length,
         retry: event.generation?.retry ?? null,
         model: event.agent.model ?? null,
+        thinkingLevel: event.agent.thinkingLevel ?? null,
         error: null
       };
     }
@@ -212,7 +216,11 @@ export function reduceView(
     case "auto_retry_end":
       return { ...view, retry: null };
     case "agent_changed":
-      return { ...view, model: event.agent.model ?? null };
+      return {
+        ...view,
+        model: event.agent.model ?? null,
+        thinkingLevel: event.agent.thinkingLevel ?? null
+      };
     case "task_failed":
       return { ...view, error: event.message };
     case "submission":

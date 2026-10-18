@@ -11,6 +11,7 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
+import { ModelPicker } from "@/components/model-picker";
 import { usePiSession } from "@/pi/use-pi-session";
 import type { PiMessage } from "@/pi/transcript";
 import { chatObjectName } from "@/shared";
@@ -43,6 +44,9 @@ export function ChatPane({ userId, chatId }: { userId: string; chatId: string })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mx-auto flex w-full max-w-3xl justify-end px-4 pt-3">
+        <ModelPicker chatId={chatId} model={session.model?.modelId ?? null} thinkingLevel={session.thinkingLevel} />
+      </div>
       <MessageScrollerProvider>
         <MessageScroller>
           <MessageScrollerViewport>

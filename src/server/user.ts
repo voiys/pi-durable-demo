@@ -104,6 +104,16 @@ export class User extends Agent<Env, UserState> {
     return connection;
   }
 
+  /** Model slugs this ChatGPT account may use (research/siwc.md: GET /v1/models, visibility "list"). */
+  async availableModels(): Promise<string[]> {
+    const stored = this.credential();
+    const credential = stored.expires > Date.now() ? stored : await this.refreshCredential(stored);
+    const res = await fetch("https://api.openai.com/v1/models", { headers: { authorization: `Bearer ${credential.access}` } });
+    if (!res.ok) throw new Error(`GET /v1/models failed (${res.status}): ${await res.text()}`);
+    const body = (await res.json()) as { models: { slug: string; visibility: string }[] };
+    return body.models.filter((m) => m.visibility === "list").map((m) => m.slug);
+  }
+
   /** Refresh tokens rotate, so all chats refresh through here, one at a time. */
   async refreshCredential(stale: OAuthCredential): Promise<OAuthCredential> {
     while (this.#refreshing) await this.#refreshing;
