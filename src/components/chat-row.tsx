@@ -10,10 +10,10 @@ import type { ChatSummary } from "@/shared";
 export function ChatRow({ chat, active, onOpen, onDeleted, children }: { chat: ChatSummary; active: boolean; onOpen: () => void; onDeleted: () => void; children?: ReactNode }) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const fail = (e: Error) => toast.error(e.message);
+  const fail = (action: string) => (e: Error) => toast.error(`Couldn't ${action}`, { description: e.message });
   const save = (title: string) => {
     setEditing(false);
-    if (title.trim() && title.trim() !== chat.title) renameChat({ data: { chatId: chat.id, title } }).catch(fail);
+    if (title.trim() && title.trim() !== chat.title) renameChat({ data: { chatId: chat.id, title } }).catch(fail("rename chat"));
   };
 
   return (
@@ -26,7 +26,7 @@ export function ChatRow({ chat, active, onOpen, onDeleted, children }: { chat: C
           onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setConfirming(false)}
         >
           <span className="text-destructive flex-1 truncate">Delete chat?</span>
-          <Button autoFocus size="sm" variant="destructive" className="h-6 px-2 text-xs" onClick={() => deleteChat({ data: chat.id }).then(onDeleted, fail)}>
+          <Button autoFocus size="sm" variant="destructive" className="h-6 px-2 text-xs" onClick={() => deleteChat({ data: chat.id }).then(onDeleted, fail("delete chat"))}>
             Delete
           </Button>
           <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setConfirming(false)}>

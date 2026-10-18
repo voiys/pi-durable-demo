@@ -17,14 +17,14 @@ export function ModelPicker({ chatId, model, thinkingLevel }: { chatId: string; 
   const [options, setOptions] = useState<ModelOption[]>(cached ?? []);
   useEffect(() => {
     loading ??= chatModels({ data: chatId }).then((list) => (cached = list));
-    loading.then(setOptions, (e: Error) => ((loading = undefined), toast.error(e.message)));
+    loading.then(setOptions, (e: Error) => ((loading = undefined), toast.error("Couldn't load models", { description: e.message })));
   }, [chatId]);
   const current = options.find((o) => o.id === model);
   const levels = current?.levels ?? [];
   const step = levels.findIndex((l) => l === thinkingLevel);
   const label = `${current?.name ?? model ?? "Model"} · ${thinkingLevel ?? "-"}`;
   const change = (next: string, level: string) =>
-    setChatModel({ data: { chatId, model: next, thinkingLevel: level } }).catch((e: Error) => toast.error(e.message));
+    setChatModel({ data: { chatId, model: next, thinkingLevel: level } }).catch((e: Error) => toast.error("Couldn't change model", { description: e.message }));
 
   return (
     <Popover>

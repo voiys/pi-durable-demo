@@ -15,6 +15,23 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      position="bottom-right"
+      offset={16}
+      visibleToasts={3}
+      closeButton
+      toastOptions={{
+        classNames: {
+          // Elevation from a layered shadow (hairline ring + soft drop) instead of a border; radius-xl (12px) with 12px padding. Reduced motion drops sonner's transitions.
+          toast:
+            "items-start! gap-2.5! rounded-xl! border-transparent! p-3! shadow-[0_0_0_1px_rgb(0_0_0/0.06),0_2px_6px_rgb(0_0_0/0.06),0_8px_24px_-4px_rgb(0_0_0/0.12)]! dark:shadow-[0_0_0_1px_rgb(255_255_255/0.1),0_8px_24px_-4px_rgb(0_0_0/0.5)]! motion-reduce:transition-none!",
+          icon: "mt-0.5 mr-0! ml-0!",
+          title: "text-sm font-medium",
+          // Server messages are often lowercase: capitalise the first letter for display only.
+          description: "text-muted-foreground! text-[13px] first-letter:uppercase",
+          error: "[&_[data-icon]]:text-destructive dark:[&_[data-icon]]:text-red-400",
+          closeButton: "bg-popover! text-muted-foreground! hover:text-foreground! border-border! shadow-sm",
+        },
+      }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,
@@ -27,7 +44,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
+          "--border-radius": "var(--radius-xl)",
         } as React.CSSProperties
       }
       {...props}

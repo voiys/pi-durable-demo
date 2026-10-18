@@ -6,7 +6,7 @@ import { z } from "zod";
 import { ChatPane, DraftPane } from "@/components/chat-pane";
 import { ChatRow } from "@/components/chat-row";
 import { NavUser } from "@/components/nav-user";
-import { Snippet } from "@/components/search-hits";
+import { ChatHits } from "@/components/search-hits";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -82,29 +82,11 @@ function App() {
                   key={c.id}
                   chat={c}
                   active={c.id === chat && !agent}
-                  onOpen={() => navigate({ search: { chat: c.id } })}
+                  // While searching, a chat opens at its best (first, bm25-ranked) hit.
+                  onOpen={() => navigate({ search: { chat: c.id, entry: hits.find((h) => h.chatId === c.id)?.entryId } })}
                   onDeleted={() => c.id === chat && navigate({ search: {} })}
                 >
-                  {needle && hits.some((h) => h.chatId === c.id) && (
-                    <SidebarMenuSub>
-                      {hits
-                        .filter((h) => h.chatId === c.id)
-                        .map((h) => (
-                          <SidebarMenuSubItem key={h.entryId}>
-                            <SidebarMenuSubButton
-                              size="sm"
-                              className="h-auto py-1"
-                              isActive={c.id === chat && h.entryId === entry}
-                              onClick={() => navigate({ search: { chat: c.id, entry: h.entryId } })}
-                            >
-                              <span className="text-muted-foreground line-clamp-2 text-xs">
-                                <Snippet text={h.snippet} />
-                              </span>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                    </SidebarMenuSub>
-                  )}
+                  {needle && <ChatHits hits={hits.filter((h) => h.chatId === c.id)} />}
                   {c.agents.length > 0 && (
                     <SidebarMenuSub>
                       {c.agents.map((a) => (
