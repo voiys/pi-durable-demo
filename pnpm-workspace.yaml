@@ -6,3 +6,4 @@ allowBuilds:
   workerd: true
 minimumReleaseAgeExclude:
   - '@cloudflare/workers-types@5.20261018.1'
+  - shadcn@4.22.1
