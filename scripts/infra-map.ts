@@ -50,7 +50,7 @@ const RULES: { binding?: string; obj: string; key: string; owner: string; probes
       { file: "src/worker.ts", re: /name\?\.startsWith\(`\$\{id\}--`\)/, why: "gate: chat name must start with the caller's id" },
       { file: "src/worker.ts", re: /env\.User\.getByName\(id\)\.hasChat\(chatId\)/, why: "gate: chatId must be in the caller's catalog" },
       { file: "src/server/fns.ts", re: /hasChat\(chatId\)\)\) throw[\s\S]*env\.Chat\.getByName\(chatObjectName\(id, chatId\)\)/, why: "server fns: hasChat before opening the Chat" },
-      { file: "src/server/user.ts", re: /env\.Chat\.getByName\(chatObjectName\(this\.name, chat\.id\)\)/, why: "User opens only its own chats" },
+      { file: "src/server/user.ts", re: /^(?![\s\S]*env\.Chat\.)/, why: "User never opens a Chat (chats call their User, not the reverse)" },
       { file: "src/server/chat.ts", re: /userId = this\.#name\.split\("--"\)\[0\][\s\S]*chatId = this\.#name\.split\("--"\)\[1\]/, why: "Chat parses userId--chatId from its name" },
       { file: "src/server/chat.ts", re: /this\.env\.Chat\.getByName\(`\$\{this\.userId\}--\$\{chatId\}`\)\.receive/, why: "Chat-to-Chat stays inside the same user" },
     ],

@@ -64,9 +64,7 @@ export class Chat extends DurableObject<Env> {
     return this.#memory;
   };
   readonly #optchat = optchatExtension(this.memory);
-  get optchat() {
-    return this.ctx.storage.kv.get("optchat") === true;
-  }
+
   readonly harness = new PiHarness({
     harness: ({ storage, context }) => {
       this.registry.install({
@@ -77,7 +75,7 @@ export class Chat extends DurableObject<Env> {
             onYield: (_answer, api) => {
               if (api.conversationId !== ROOT_CONVERSATION_ID) return;
               this.ctx.waitUntil(this.syncIndex());
-              if (this.optchat) this.logTurn();
+              this.logTurn();
             },
           }),
         ],
@@ -85,7 +83,7 @@ export class Chat extends DurableObject<Env> {
       const { MainTools, PeerTools } = agentExtensions(this.#agentHost);
       this.registry.install(MainTools);
       this.registry.install(PeerTools);
-      if (this.optchat) this.registry.install(this.#optchat);
+      this.registry.install(this.#optchat); // every chat's main agent is an OptChat (DECISIONS.md)
       const models = (this.#models = createModels({ credentials: this.#credentials }));
       const base = openaiProvider();
       models.setProvider({ ...base, auth: { oauth: oauth((c) => this.#user().refreshCredential(c)) } });
@@ -145,12 +143,6 @@ export class Chat extends DurableObject<Env> {
 
   async lastAnswer() {
     return (await lastOf(this.harness, ROOT_SESSION)).text;
-  }
-
-  /** Makes this chat's main agent an OptChat (called once, when the chat is created). */
-  enableOptChat() {
-    this.ctx.storage.kv.put("optchat", true);
-    this.registry.install(this.#optchat);
   }
 
   /** Logs the root conversation's finished turn into the OptChat memory; it summarizes in the background. */

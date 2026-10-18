@@ -14,7 +14,10 @@ export { User } from "./server/user.ts";
 async function routeAgent(request: Request, env: Env): Promise<Response> {
   const session = await auth().api.getSession({ headers: request.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
-  const [, , kind, name] = new URL(request.url).pathname.split("/");
+  const segments = new URL(request.url).pathname.split("/");
+  // Exactly /agents/<kind>/<name>: no sub-paths, so nothing past the gate is addressed by a path it didn't check.
+  if (segments.length !== 4) return new Response("Not found", { status: 404 });
+  const [, , kind, name] = segments;
   const id = session.user.id;
   const chatId = kind === "chat" && name?.startsWith(`${id}--`) ? name.slice(id.length + 2) : undefined;
   // A chat must also be in the caller's own catalog, so nobody can mint Chat objects outside it.

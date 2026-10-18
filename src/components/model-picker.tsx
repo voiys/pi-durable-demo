@@ -1,7 +1,6 @@
 import { ChevronDownIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,27 +10,33 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { InputGroupButton } from "@/components/ui/input-group";
 import { chatModels, setChatModel } from "@/server/fns";
 import type { ModelOption } from "@/shared";
 
-/** AI Elements model-selector: two dropdowns (model, effort) showing pi's own session state. */
+/** AI Elements model-selector, inside the prompt input: two dropdowns (model, effort) showing pi's own session state. */
+// The list depends on the ChatGPT account, not the chat: one fetch per page load, shown from cache on every later mount.
+let cached: ModelOption[] | undefined;
+let loading: Promise<ModelOption[]> | undefined;
+
 export function ModelPicker({ chatId, model, thinkingLevel }: { chatId: string; model: string | null; thinkingLevel: string | null }) {
-  const [options, setOptions] = useState<ModelOption[]>([]);
+  const [options, setOptions] = useState<ModelOption[]>(cached ?? []);
   useEffect(() => {
-    chatModels({ data: chatId }).then(setOptions, (e: Error) => toast.error(e.message));
+    loading ??= chatModels({ data: chatId }).then((list) => (cached = list));
+    loading.then(setOptions, (e: Error) => ((loading = undefined), toast.error(e.message)));
   }, [chatId]);
   const current = options.find((o) => o.id === model);
   const change = (next: string, level: string) =>
     setChatModel({ data: { chatId, model: next, thinkingLevel: level } }).catch((e: Error) => toast.error(e.message));
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" aria-label={`Model: ${current?.name ?? "none"}`}>
-            {current?.name ?? "Model"}
+          <InputGroupButton variant="ghost" aria-label={`Model: ${current?.name ?? "none"}`}>
+            {current?.name ?? model ?? "Model"}
             <ChevronDownIcon />
-          </Button>
+          </InputGroupButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           <DropdownMenuRadioGroup
@@ -53,11 +58,11 @@ export function ModelPicker({ chatId, model, thinkingLevel }: { chatId: string; 
       </DropdownMenu>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" aria-label={`Effort: ${thinkingLevel ?? "none"}`}>
+          <InputGroupButton variant="ghost" aria-label={`Effort: ${thinkingLevel ?? "none"}`}>
             <span className="text-muted-foreground">Effort</span>
             {thinkingLevel ?? "-"}
             <ChevronDownIcon />
-          </Button>
+          </InputGroupButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           <DropdownMenuGroup>

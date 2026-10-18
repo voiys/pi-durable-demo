@@ -1,10 +1,10 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
-import { Bot, InfinityIcon, MessageSquarePlus, Search } from "lucide-react";
+import { Bot, MessageSquarePlus, Search } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 import { ChatPane } from "@/components/chat-pane";
-import { ConnectChatGPT } from "@/components/connect-chatgpt";
+import { NavUser } from "@/components/nav-user";
 import { SearchDialog } from "@/components/search-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +23,6 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { authClient } from "@/lib/auth-client";
 import { createChat, getSession } from "@/server/fns";
 import type { UserState } from "@/shared";
 
@@ -53,14 +52,9 @@ function App() {
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <div className="flex gap-2">
-            <Button className="flex-1" onClick={async () => navigate({ search: { chat: (await createChat({ data: false })).id } })} disabled={!state?.chatgpt}>
-              <MessageSquarePlus /> New chat
-            </Button>
-            <Button variant="secondary" title="One endless chat whose history is its memory (OptChat)" onClick={async () => navigate({ search: { chat: (await createChat({ data: true })).id } })} disabled={!state?.chatgpt}>
-              <InfinityIcon /> OptChat
-            </Button>
-          </div>
+          <Button onClick={async () => navigate({ search: { chat: (await createChat()).id } })} disabled={!state?.chatgpt}>
+            <MessageSquarePlus /> New chat
+          </Button>
           <Button variant="outline" onClick={() => setSearching(true)}>
             <Search /> Search messages
           </Button>
@@ -94,11 +88,7 @@ function App() {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
-          {state && <ConnectChatGPT chatgpt={state.chatgpt} />}
-          <div className="text-muted-foreground truncate px-2 text-xs">{user.email}</div>
-          <Button variant="ghost" size="sm" onClick={async () => (await authClient.signOut(), navigate({ to: "/login" }))}>
-            Log out
-          </Button>
+          {state && <NavUser user={user} chatgpt={state.chatgpt} />}
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="h-svh">

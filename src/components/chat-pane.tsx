@@ -98,11 +98,6 @@ export function ChatPane({ userId, chatId, session: sessionId }: { userId: strin
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {!sessionId && (
-        <div className="mx-auto flex w-full max-w-3xl justify-end px-4 pt-3">
-          <ModelPicker chatId={chatId} model={session.model?.modelId ?? null} thinkingLevel={session.thinkingLevel} />
-        </div>
-      )}
       <MessageScrollerProvider>
         <MessageScroller>
           <MessageScrollerViewport>
@@ -136,7 +131,9 @@ export function ChatPane({ userId, chatId, session: sessionId }: { userId: strin
               }
             }}
           />
-          <InputGroupAddon align="block-end" className="justify-end p-2">
+          <InputGroupAddon align="block-end" className="p-2">
+            {!sessionId && <ModelPicker chatId={chatId} model={session.model?.modelId ?? null} thinkingLevel={session.thinkingLevel} />}
+            <span className="flex-1" />
             {session.running ? (
               <InputGroupButton type="button" variant="outline" size="icon-sm" onClick={session.abort}>
                 <Square />

@@ -59,9 +59,10 @@ async function fnId(name: string) {
   assert.ok(m, `server fn ${name} not found in the dev client module`);
   return m[1];
 }
-// seroval wire format of `{ data }`, only for the value shapes these fns take (boolean, string, flat object).
+// seroval wire format of `{ data }`, only for the value shapes these fns take (undefined, boolean, string, flat object).
 const enc = (v: unknown, i = { n: 0 }): unknown =>
-  typeof v === "boolean" ? { t: 2, s: v ? 2 : 3 }
+  v === undefined ? { t: 2, s: 1 }
+  : typeof v === "boolean" ? { t: 2, s: v ? 2 : 3 }
   : typeof v === "string" ? { t: 1, s: v }
   : { t: 10, i: ++i.n, p: { k: Object.keys(v as object), v: Object.values(v as object).map((x) => enc(x, i)) }, o: 0 };
 const payload = (data: unknown) => JSON.stringify({ t: { t: 10, i: 0, p: { k: ["data"], v: [enc(data)] }, o: 0 }, f: 127, m: [] });

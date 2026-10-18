@@ -37,7 +37,7 @@ async function probe(label: string, who: Actor | null, path: string, transport: 
 
 const ensureChats = async (who: Actor, n: number): Promise<ChatSummary[]> => {
   for (let i = (await userState(who)).chats.length; i < n; i++) {
-    const r = await serverFn(who, "createChat", "POST", false);
+    const r = await serverFn(who, "createChat", "POST", undefined);
     assert.equal(r.status, 200, `createChat as ${who.name}: ${r.body}`);
   }
   return (await userState(who)).chats;
@@ -113,7 +113,7 @@ for (const who of [B, null]) {
       ["chatModels", "GET", c.id],
       ["setChatModel", "POST", { chatId: c.id, model: "x", thinkingLevel: "low" }],
     ]),
-    ...(who ? [] : [["createChat", "POST", false] as [string, "POST", boolean]]),
+    ...(who ? [] : [["createChat", "POST", undefined] as [string, "POST", undefined]]),
     ["searchMessages", "GET", word ?? "chat"],
   ];
   for (const [name, method, data] of calls) {

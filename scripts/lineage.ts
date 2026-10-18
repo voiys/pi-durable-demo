@@ -13,8 +13,8 @@ if (!before.chatgpt) {
   console.log("PRECONDITION: sign in as a@test.dev in the UI and connect ChatGPT (the tagged message needs a real model turn).");
   process.exit(2);
 }
-const created = await serverFn(A, "createChat", "POST", true);
-assert.equal(created.status, 200, `createChat(optchat): ${created.body}`);
+const created = await serverFn(A, "createChat", "POST", undefined);
+assert.equal(created.status, 200, `createChat: ${created.body}`);
 const fresh = (await userState(A)).chats.filter((c) => !before.chats.some((b) => b.id === c.id));
 assert.equal(fresh.length, 1, `expected one new chat, got ${fresh.length}`);
 const chat = fresh[0];
@@ -68,7 +68,6 @@ function evaluate(hits: Map<string, Map<string, number>>): Row[] {
 
   const c = hits.get(aChat)!;
   const u = hits.get(aUser) ?? new Map<string, number>();
-  add("Chat DO is an OptChat (kv optchat)", query(aChat, "SELECT 1 FROM _cf_KV WHERE key = 'optchat'").length === 1, aChat.split("/").pop()!.slice(0, 8));
   add("Chat DO pi_entries: user + assistant", (c.get("pi_entries") ?? 0) >= 2, `${c.get("pi_entries") ?? 0} row(s)`);
   add("Chat DO optchat_log", (c.get("optchat_log") ?? 0) >= 1, `${c.get("optchat_log") ?? 0} row(s)`);
   add("Chat DO optchat_tree (background compaction)", (c.get("optchat_tree") ?? 0) >= 1, `${c.get("optchat_tree") ?? 0} row(s)`, "PENDING");
