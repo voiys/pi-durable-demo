@@ -1,10 +1,12 @@
-import { Bug, ChevronRight } from "lucide-react";
+import { Bug, ChevronRight, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SidebarGroup, SidebarGroupContent, SidebarGroupLabel } from "@/components/ui/sidebar";
+import { InlineConfirm } from "@/components/inline-confirm";
 import { StepSlider } from "@/components/step-slider";
-import { memoryStats, setDebug } from "@/server/fns";
+import { Button } from "@/components/ui/button";
+import { memoryStats, resetMemory, setDebug } from "@/server/fns";
 import { VIEW_BUDGETS, type DebugSettings, type MemoryStats } from "@/shared";
 
 const kb = (n: number) => `${Math.round(n / 1000)}K`;
@@ -13,6 +15,7 @@ const kb = (n: number) => `${Math.round(n / 1000)}K`;
 export function DebugSection({ debug }: { debug: DebugSettings }) {
   const [open, setOpen] = useState(false);
   const [stats, setStats] = useState<MemoryStats | null>(null);
+  const [resetting, setResetting] = useState(false);
   useEffect(() => {
     if (!open) return setStats(null);
     const poll = () => memoryStats().then(setStats, (e: Error) => toast.error("Couldn't read memory stats", { description: e.message }));
@@ -59,6 +62,24 @@ export function DebugSection({ debug }: { debug: DebugSettings }) {
                   {stats.building} running, {stats.pending} queued
                 </dd>
               </dl>
+            )}
+            {resetting ? (
+              <InlineConfirm
+                className="h-7"
+                question="Forget everything?"
+                action="Reset"
+                onCancel={() => setResetting(false)}
+                onConfirm={() =>
+                  resetMemory().then(
+                    () => setResetting(false),
+                    (e: Error) => toast.error("Couldn't reset memory", { description: e.message }),
+                  )
+                }
+              />
+            ) : (
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive h-7 justify-start px-0 text-xs" onClick={() => setResetting(true)}>
+                <RotateCcw /> Reset memory
+              </Button>
             )}
           </SidebarGroupContent>
         </CollapsibleContent>

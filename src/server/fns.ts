@@ -24,6 +24,7 @@ export const searchMessages = createServerFn({ method: "GET" })
 export const setDebug = createServerFn({ method: "POST" })
   .validator((d: { viewBytes: number }) => d)
   .handler(async ({ data }) => (await user()).setDebug(data));
+export const resetMemory = createServerFn({ method: "POST" }).handler(async () => (await user()).resetMemory());
 export const memoryStats = createServerFn({ method: "GET" }).handler(async (): Promise<MemoryStats> => ({ ...(await (await user()).memoryStats()) }));
 export const retireSubagent = createServerFn({ method: "POST" })
   .validator((d: { chatId: string; name: string }) => d)

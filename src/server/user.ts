@@ -142,6 +142,14 @@ export class User extends Agent<Env, UserState> {
     return searchPage(this.#openMemory(), text, before);
   }
 
+  /** Forgets everything: stops the compactor and drops the log, tree and view. Chats keep their transcripts; their
+   * already-logged turns are not logged again, so the memory starts empty from the next turn. */
+  async resetMemory() {
+    await this.#memory?.close();
+    this.#memory = undefined;
+    for (const t of ["optchat_log", "optchat_tree", "optchat_view"]) this.ctx.storage.sql.exec(`DROP TABLE IF EXISTS ${t}`);
+  }
+
   memoryStats(): MemoryStats {
     const m = this.#openMemory();
     return { entries: m.root.length, nodes: m.tree.size, lines: m.view.length, viewBytes: m.size, budget: m.budget, pending: m.pending, building: m.active };
