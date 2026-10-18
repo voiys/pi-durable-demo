@@ -43,7 +43,8 @@ const host = (url: string) => {
     return url;
   }
 };
-const quote = (s: string | undefined) => `“${(s ?? "").trim()}”`;
+/** ` for “query”`, or nothing while the call's arguments are still streaming in. */
+const quoted = (prefix: string, s: unknown) => (String(s ?? "").trim() ? `${prefix} “${String(s).trim()}”` : "");
 const DAYS: Record<string, string> = { "*": "every day", "1-5": "weekdays", "0,6": "weekends", "6,0": "weekends", "0": "Sundays", "1": "Mondays", "2": "Tuesdays", "3": "Wednesdays", "4": "Thursdays", "5": "Fridays", "6": "Saturdays" };
 
 /** A cron schedule in words for the common shapes, else as written. Cron is UTC (src/server/bot.ts routines). */
@@ -91,7 +92,7 @@ function describe(call: ToolCall, result: ToolResult | undefined, ctx: ToolConte
           ))}
         </Trace>
       );
-      return s(<GlobeIcon />, `Searching the web for ${quote(String(a.query ?? ""))}`, `Searched the web for ${quote(String(a.query ?? ""))}`, "searched the web", { detail });
+      return s(<GlobeIcon />, `Searching the web${quoted(" for", a.query)}`, `Searched the web${quoted(" for", a.query)}`, "searched the web", { detail });
     }
     case "web_fetch":
       return s(<BookOpenIcon />, `Reading ${host(String(a.url ?? ""))}`, `Read ${host(String(a.url ?? ""))}`, "page", { href: String(a.url ?? "") });
@@ -112,7 +113,7 @@ function describe(call: ToolCall, result: ToolResult | undefined, ctx: ToolConte
       if (a.action === "remove") return s(<CalendarClockIcon />, `Removing ${a.name ?? "a routine"}`, `Removed ${a.name}`, "removed a routine");
       return s(<CalendarClockIcon />, "Checking its routines", "Checked its routines");
     case "search":
-      return s(<HistoryIcon />, `Remembering ${quote(String(a.text ?? ""))}`, `Remembered ${quote(String(a.text ?? ""))}`, "searched its memory");
+      return s(<HistoryIcon />, `Searching its memory${quoted(" for", a.text)}`, `Searched its memory${quoted(" for", a.text)}`, "searched its memory");
     case "zoom":
       return s(<HistoryIcon />, "Looking back through earlier messages", "Looked back through earlier messages", "looked back");
     case "date":
@@ -149,7 +150,8 @@ function describe(call: ToolCall, result: ToolResult | undefined, ctx: ToolConte
       return s(<UsersIcon />, "Looking at your bots", "Looked at your bots");
     }
   }
-  return s(<WrenchIcon />, `Using ${call.name}`, `Used ${call.name}`);
+  const tool = call.name.replace(/[_-]+/g, " ");
+  return s(<WrenchIcon />, `Using ${tool}`, `Used ${tool}`);
 }
 
 /** "a, b and c", with repeated page reads counted ("read 3 pages"). */
@@ -165,7 +167,7 @@ function StepRow({ step, phase, error }: { step: Step; phase: "running" | "done"
   const line = (
     <TraceLine status={phase === "running" ? "running" : phase === "error" ? "error" : undefined}>
       <TraceIcon>{step.icon}</TraceIcon>
-      <TraceTitle className="whitespace-normal">{phase === "running" ? step.doing : phase === "error" ? `Couldn't finish: ${step.doing.charAt(0).toLowerCase()}${step.doing.slice(1)}` : step.done}</TraceTitle>
+      <TraceTitle className="whitespace-normal">{phase === "running" || phase === "interrupted" ? step.doing : phase === "error" ? `Couldn't finish: ${step.doing.charAt(0).toLowerCase()}${step.doing.slice(1)}` : step.done}</TraceTitle>
       {phase === "interrupted" && <TraceDescription>stopped</TraceDescription>}
       {step.href && phase === "done" && (
         <TraceIcon>
@@ -243,7 +245,7 @@ export function Working({ label = "Thinking" }: { label?: string }) {
       <TraceIcon>
         <SparklesIcon />
       </TraceIcon>
-      <TraceTitle>{label}</TraceTitle>
+      <TraceTitle className="whitespace-normal">{label}</TraceTitle>
     </TraceLine>
   );
 }
@@ -281,12 +283,24 @@ export function Activity({ parts, live, ctx }: { parts: readonly PiMessagePart[]
       </Trace>
     );
   if (!steps.length) return null;
+  // One step needs no summary over it: the step's own line says it all.
+  if (steps.length === 1 && !parts.some((p) => p.type === "thinking" && p.text.trim()))
+    return (
+      <Trace>
+        <StepRow {...steps[0]} />
+      </Trace>
+    );
   const failed = steps.filter((s) => s.phase === "error").length;
+  // The summary names only what worked; failures are counted beside it and open by default.
+  const worked = steps.filter((s) => s.phase !== "error").map((s) => s.step);
   const summary = (
-    <TraceLine status={current ? "running" : failed ? "error" : undefined}>
-      <TraceIcon>{steps.length === 1 ? steps[0].step.icon : <SparklesIcon />}</TraceIcon>
-      <TraceTitle className="whitespace-normal">{current ? current.step.doing : summarize(steps.map((s) => s.step))}</TraceTitle>
-      {(failed > 0 || seconds !== undefined) && <TraceDescription>{failed ? `${failed} didn't work` : `${seconds}s`}</TraceDescription>}
+    <TraceLine status={current ? "running" : worked.length ? undefined : "error"}>
+      <TraceIcon>
+        <SparklesIcon />
+      </TraceIcon>
+      <TraceTitle className="whitespace-normal">{current ? current.step.doing : worked.length ? summarize(worked) : "Couldn't finish"}</TraceTitle>
+      {failed > 0 && worked.length > 0 && <TraceDescription className="text-destructive">{failed} didn't work</TraceDescription>}
+      {!failed && seconds !== undefined && <TraceDescription>{seconds}s</TraceDescription>}
     </TraceLine>
   );
   return (
