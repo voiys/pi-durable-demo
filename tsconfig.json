@@ -1,0 +1,27 @@
+{
+  "include": [
+    "alchemy.run.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "vite.config.ts"
+  ],
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "allowImportingTsExtensions": true,
+    "types": [
+      "vite/client",
+      "@cloudflare/workers-types"
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  }
+}
