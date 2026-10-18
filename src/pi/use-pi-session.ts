@@ -29,12 +29,13 @@ const INITIAL_STATE: State = {
  * the same `reduceEvents` the server tests use. A reconnect gets a fresh
  * snapshot, so there is nothing to resume from.
  */
-export function usePiSession(object: string) {
+export function usePiSession(object: string, session?: string) {
   const [state, setState] = useState<State>(INITIAL_STATE);
 
   const agent = useAgent({
     agent: "chat",
     name: object,
+    query: session ? { session } : undefined,
     onOpen: () => setState((current) => ({ ...current, status: "open" })),
     onClose: () => setState((current) => ({ ...current, status: "closed" })),
     onMessage: (event) => {
@@ -65,7 +66,7 @@ export function usePiSession(object: string) {
 
   useEffect(() => {
     setState(INITIAL_STATE);
-  }, [object]);
+  }, [object, session]);
 
   const send = useCallback(
     (message: ClientMessage) => {
