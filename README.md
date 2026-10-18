@@ -12,3 +12,7 @@ Local-only demo: email/password accounts, each user connects their ChatGPT plan 
 2. Several chats in the sidebar, click one to reopen it; log out and sign in as another user: their sidebar is empty and `/agents/*` returns 403 for the other user's objects.
 3. "Search messages" runs FTS5 bm25 over your own user + assistant messages in your User DO; a hit opens its chat.
 4. ChatGPT connection card (account, Manage usage, Disconnect) and a per-chat model + reasoning-effort picker limited to what your plan offers.
+
+## Checks
+
+With `pnpm dev` running: `node scripts/infra-map.ts` (regenerates ARCHITECTURE.md; `--check` only verifies), `node scripts/isolation.ts` (user B vs user A's objects), `node scripts/lineage.ts` (traces one tagged message through every local SQLite file; needs ChatGPT connected for a@test.dev). Exit 0 = pass.
