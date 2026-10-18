@@ -62,6 +62,26 @@ export const EMPTY_VIEW: PiSessionView = {
 
 const LIVE_ID = "live";
 
+/** What the thread shows as one row: a user message, or consecutive assistant messages (a tool loop, plus the streamed one). */
+export type PiTurn = Omit<PiMessage, "id" | "role"> & {
+  readonly role: "user" | "assistant";
+  /** The ids of the messages merged into this turn. */
+  readonly ids: readonly string[];
+  readonly live: boolean;
+};
+
+export function toTurns(messages: readonly PiMessage[]): PiTurn[] {
+  const turns: PiTurn[] = [];
+  for (const { id, role, ...message } of messages) {
+    if (role !== "user" && role !== "assistant") continue;
+    const last = turns.at(-1);
+    if (role === "assistant" && last?.role === "assistant")
+      turns[turns.length - 1] = { ...last, parts: [...last.parts, ...message.parts], error: message.error ?? last.error, ids: [...last.ids, id], live: id === LIVE_ID };
+    else turns.push({ ...message, role, ids: [id], live: id === LIVE_ID });
+  }
+  return turns;
+}
+
 function append(view: PiSessionView, entry: EntryRecord): PiSessionView {
   const message = projectEntry(entry);
   if (!message) return view;

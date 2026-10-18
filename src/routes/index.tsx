@@ -1,29 +1,30 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
-import { Bot, MessageSquarePlus, Search } from "lucide-react";
+import { MessageCircleDashedIcon, MessageSquarePlus, Search, SearchX, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { ChatPane, DraftPane } from "@/components/chat-pane";
 import { ChatRow } from "@/components/chat-row";
 import { DebugSection } from "@/components/debug-section";
 import { SubagentRow } from "@/components/subagent-row";
-import { NavUser } from "@/components/nav-user";
+import { connect, NavUser } from "@/components/nav-user";
 import { ChatHits } from "@/components/search-hits";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarHeader,
-  SidebarInput,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
@@ -67,18 +68,48 @@ function App() {
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <Button onClick={() => navigate({ search: {} })} disabled={!state?.chatgpt}>
-            <MessageSquarePlus /> New chat
-          </Button>
-          <div className="relative">
-            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2" />
-            <SidebarInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search chats and messages" className="pl-8" />
-          </div>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <Tooltip open={state?.chatgpt ? false : undefined}>
+                <TooltipTrigger asChild>
+                  <span className="block">
+                    <SidebarMenuButton variant="outline" onClick={() => navigate({ search: {} })} disabled={!state?.chatgpt}>
+                      <MessageSquarePlus /> New chat
+                    </SidebarMenuButton>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Connect ChatGPT first</TooltipContent>
+              </Tooltip>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <InputGroup className="bg-background h-8 shadow-none">
+            <InputGroupInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search chats and messages" aria-label="Search chats and messages" />
+            <InputGroupAddon>
+              <Search />
+            </InputGroupAddon>
+            {query && (
+              <InputGroupAddon align="inline-end">
+                {needle && <InputGroupText className="tabular-nums">{chats.length}</InputGroupText>}
+                <InputGroupButton size="icon-xs" aria-label="Clear search" onClick={() => setQuery("")}>
+                  <X />
+                </InputGroupButton>
+              </InputGroupAddon>
+            )}
+          </InputGroup>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
             <SidebarMenu>
-              {needle && chats.length === 0 && <p className="text-muted-foreground px-2 text-sm">No matches.</p>}
+              {needle && chats.length === 0 && (
+                <Empty className="p-4 md:p-4">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <SearchX />
+                    </EmptyMedia>
+                    <EmptyTitle>No matches</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              )}
               {chats.map((c) => (
                 <ChatRow
                   key={c.id}
@@ -115,16 +146,28 @@ function App() {
       </Sidebar>
       <SidebarInset className="h-svh">
         <header className="flex h-12 items-center gap-2 border-b px-3">
-          <SidebarTrigger />
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
           <span className="truncate text-sm font-medium">{title}</span>
         </header>
         {chat ? (
-          <ChatPane key={`${chat}:${agent ?? "main"}`} userId={user.id} chatId={chat} session={agent} entry={entry} />
+          <ChatPane key={`${chat}:${agent ?? "main"}`} userId={user.id} chatId={chat} session={agent} entry={entry} chats={state?.chats ?? []} />
         ) : (
           state?.chatgpt ? (
             <DraftPane onCreated={(id) => navigate({ search: { chat: id } })} />
           ) : (
-            <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">Connect your ChatGPT plan to start chatting.</div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <MessageCircleDashedIcon />
+                </EmptyMedia>
+                <EmptyTitle>Connect your ChatGPT plan</EmptyTitle>
+                <EmptyDescription>Chats run on your own ChatGPT plan. Connect it to start chatting.</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button onClick={connect}>Continue with ChatGPT</Button>
+              </EmptyContent>
+            </Empty>
           )
         )}
       </SidebarInset>

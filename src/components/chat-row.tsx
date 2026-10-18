@@ -1,16 +1,15 @@
 import { Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { toast } from "sonner";
 import { InlineConfirm } from "@/components/inline-confirm";
 import { SidebarInput, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { deleteChat, renameChat } from "@/server/fns";
 import type { ChatSummary } from "@/shared";
+import { fail } from "@/lib/utils";
 
 /** One sidebar chat: double-click (or F2) renames it inline; the trash action shows on hover or keyboard focus and confirms inline. */
 export function ChatRow({ chat, active, onOpen, onDeleted, children }: { chat: ChatSummary; active: boolean; onOpen: () => void; onDeleted: () => void; children?: ReactNode }) {
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const fail = (action: string) => (e: Error) => toast.error(`Couldn't ${action}`, { description: e.message });
   const save = (title: string) => {
     setEditing(false);
     if (title.trim() && title.trim() !== chat.title) renameChat({ data: { chatId: chat.id, title } }).catch(fail("rename chat"));
@@ -20,7 +19,7 @@ export function ChatRow({ chat, active, onOpen, onDeleted, children }: { chat: C
     <SidebarMenuItem>
       {confirming ? (
         <InlineConfirm
-          question="Delete chat?"
+          question={`Delete "${chat.title}"?`}
           action="Delete"
           onCancel={() => setConfirming(false)}
           onConfirm={() => deleteChat({ data: chat.id }).then(onDeleted, fail("delete chat"))}

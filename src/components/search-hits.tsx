@@ -1,4 +1,5 @@
 import { Fragment, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { MATCH_CLOSE, MATCH_OPEN, type SearchHit } from "@/shared";
 
 /** Renders an FTS5 snippet with its matches highlighted. */
@@ -9,7 +10,7 @@ function Snippet({ text }: { text: string }) {
         const [match, rest] = i === 0 ? ["", chunk] : chunk.split(MATCH_CLOSE);
         return (
           <Fragment key={i}>
-            {match && <mark className="bg-yellow-200/70 text-foreground rounded-[2px] dark:bg-yellow-500/30">{match}</mark>}
+            {match && <mark className="bg-highlight text-foreground rounded-[2px]">{match}</mark>}
             {rest}
           </Fragment>
         );
@@ -32,9 +33,9 @@ export function ChatHits({ hits }: { hits: SearchHit[] }) {
         </p>
       ))}
       {hits.length > 1 && (
-        <button type="button" className="text-muted-foreground hover:text-foreground w-fit text-[11px] transition-colors duration-150" onClick={() => setOpen(!open)}>
+        <Button variant="link" size="xs" className="text-muted-foreground w-fit px-0" onClick={() => setOpen(!open)}>
           {open ? "Show less" : `+${hits.length - 1} more`}
-        </button>
+        </Button>
       )}
     </div>
   );

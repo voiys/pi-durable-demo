@@ -12,10 +12,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { authClient } from "@/lib/auth-client";
 import { connectChatGPT, disconnectChatGPT } from "@/server/fns";
 import type { UserState } from "@/shared";
+import { fail } from "@/lib/utils";
 
 function Identity({ name, email }: { name: string; email: string }) {
   return (
@@ -31,7 +33,7 @@ function Identity({ name, email }: { name: string; email: string }) {
   );
 }
 
-const connect = async () => (window.location.href = await connectChatGPT());
+export const connect = () => connectChatGPT().then((url) => (window.location.href = url), fail("connect ChatGPT"));
 
 export function NavUser({ user, chatgpt }: { user: { name: string; email: string }; chatgpt: UserState["chatgpt"] }) {
   const { isMobile } = useSidebar();
@@ -41,10 +43,10 @@ export function NavUser({ user, chatgpt }: { user: { name: string; email: string
     <SidebarMenu>
       {!chatgpt && (
         <SidebarMenuItem>
-          <SidebarMenuButton onClick={connect} className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground">
+          <Button size="lg" className="w-full" onClick={connect}>
             <Sparkles />
             Continue with ChatGPT
-          </SidebarMenuButton>
+          </Button>
         </SidebarMenuItem>
       )}
       <SidebarMenuItem>
@@ -74,7 +76,7 @@ export function NavUser({ user, chatgpt }: { user: { name: string; email: string
                       Manage usage
                     </a>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => disconnectChatGPT()}>
+                  <DropdownMenuItem onSelect={() => disconnectChatGPT().catch(fail("disconnect ChatGPT"))}>
                     <Unplug />
                     Disconnect ChatGPT
                   </DropdownMenuItem>
@@ -87,7 +89,7 @@ export function NavUser({ user, chatgpt }: { user: { name: string; email: string
               )}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={async () => (await authClient.signOut(), navigate({ to: "/login" }))}>
+            <DropdownMenuItem onSelect={() => authClient.signOut().then(() => navigate({ to: "/login" }), fail("log out"))}>
               <LogOut />
               Log out
             </DropdownMenuItem>
