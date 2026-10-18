@@ -1,5 +1,5 @@
-// Executable spec for OUR OptChat code (research/optchat-fix-plan.md Part 3, S1-S14), run against the real modules with
-// fakes for the store, the compressor and pi's hook API. No app hooks: everything here is public module API.
+// Executable spec for OUR OptChat code (research/optchat-fix-plan.md Part 3), now one memory per bot, run against the real
+// modules with fakes for the store, the compressor and pi's hook API. No app hooks: everything here is public module API.
 // Run: pnpm check:optchat-spec
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -21,11 +21,10 @@ const store = (): Store & { saved: Saved } => {
     saveView: (v: string) => void (saved.view = v),
   };
 };
-const label = (e: Entry) => (e.chat ? `[chat "T"] ` : "");
 function memory(compress: (c: Compression) => Promise<string> = async (c) => `S${c.part.l}.${c.part.i}`, budget = 128_000) {
   const inputs: Compression[] = [];
   const s = store();
-  const m = new Memory({ store: s, saved: { entries: [], tree: [] } }, async (c) => (inputs.push(c), compress(c)), () => {}, budget, 8, 10, { label });
+  const m = new Memory({ store: s, saved: { entries: [], tree: [] } }, async (c) => (inputs.push(c), compress(c)), () => {}, budget, 8, 10);
   return { m, inputs };
 }
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -42,7 +41,7 @@ function harness(view = "<chat>\n0+1|user: old\n</chat>") {
   const calls: string[] = [];
   const api: MemoryApi = {
     flush: async (scope) => void calls.push(`flush:${scope}`),
-    view: async () => (calls.push("view"), { view, chat: "This chat" }),
+    view: async () => (calls.push("view"), view),
     zoom: async () => "", date: async () => "", search: async () => "",
   };
   const ext = optchatExtension(api);
@@ -56,37 +55,36 @@ function harness(view = "<chat>\n0+1|user: old\n</chat>") {
 }
 const textOf = (m: Message) => (typeof m.content === "string" ? m.content : m.content.map((c) => ("text" in c ? c.text : `[${c.type}]`)).join(""));
 
-// ---------- S1-S3: labels at render time (G1) ----------
-test("S1 a tool result's summary still sees its call when entries carry a chat label", async () => {
+// ---------- S1-S3: raw text is what models and tools see ----------
+test("S1 a tool result's summary sees the call it answers", async () => {
   const { m, inputs } = memory();
   const big = "x".repeat(2000);
-  m.append("user", "go", date, undefined, undefined, "c1");
-  m.append("tool", 'bash {"cmd":"ls"}', date, undefined, undefined, "c1");
-  m.append("tool", 'read {"p":"a"}', date, undefined, undefined, "c1");
-  m.append("echo", `bash: ${big}`, date, undefined, undefined, "c1");
-  m.append("echo", `read: ${big}`, date, undefined, undefined, "c1");
+  m.append("user", "go", date);
+  m.append("tool", 'bash {"cmd":"ls"}', date);
+  m.append("tool", 'read {"p":"a"}', date);
+  m.append("echo", `bash: ${big}`, date);
+  m.append("echo", `read: ${big}`, date);
   await m.settle(undefined, "tree");
   const leaf = (i: number) => inputs.find((c) => c.part.l === 0 && c.part.i === i)!;
   assert.equal(leaf(3).call?.i, 1);
   assert.equal(leaf(4).call?.i, 2);
-  assert.ok(leaf(3).source.startsWith('echo: [chat "T"] bash: '));
-  assert.ok(!m.root[3].text.startsWith("[chat"), "stored text stays raw");
+  assert.equal(leaf(3).source, `echo: bash: ${big}`);
 });
 
-test("S2 search skips the memory's own zoom/search rows and never matches a label", async () => {
+test("S2 search skips the memory's own zoom/search rows", () => {
   const { m } = memory();
-  m.append("tool", 'zoom {"id":0}', date, undefined, undefined, "c1");
-  m.append("echo", "zoom: 0+1|user: banana", date, undefined, undefined, "c1");
-  m.append("user", "banana bread", date, undefined, undefined, "c1");
+  m.append("tool", 'zoom {"id":0}', date);
+  m.append("echo", "zoom: 0+1|user: banana", date);
+  m.append("user", "banana bread", date);
   assert.match(searchPage(m, "banana"), /^1 message contains "banana"/);
-  assert.match(searchPage(m, "chat"), /^No messages contain/);
+  assert.match(searchPage(m, "zoom"), /^No messages contain/);
 });
 
-test("S3 zoom shows the label; paging counts raw text only", () => {
+test("S3 zoom shows the message whole; paging counts characters of the raw text", () => {
   const { m } = memory();
-  m.append("user", "hello", date, undefined, undefined, "c1");
-  assert.equal(m.zoom(0, 1), '0+1|user: [chat "T"] hello');
-  assert.match(m.zoom(0, 1, 1, 2), /^0\+1\|user: \[chat "T"\] el\n\[showing characters 1-3 of 5/);
+  m.append("user", "hello", date);
+  assert.equal(m.zoom(0, 1), "0+1|user: hello");
+  assert.match(m.zoom(0, 1, 1, 2), /^0\+1\|user: el\n\[showing characters 1-3 of 5/);
 });
 
 // ---------- S4: bounded settle (G5) ----------
@@ -132,7 +130,7 @@ test("S6 the last exchange is replayed word for word after the view, inputs unto
   const frozen = JSON.stringify(msgs);
   const out = (await harness().run(msgs))!.messages;
   assert.deepEqual(out.map((m) => m.role), ["system", "user", "user", "assistant", "user"]);
-  assert.match(textOf(out[1]), /^\[You are in chat "This chat"\.\]\n<chat>[\s\S]*<\/chat>\n\nq1$/);
+  assert.equal(textOf(out[1]), "<chat>\n0+1|user: old\n</chat>\n\nq1");
   assert.equal(textOf(out[2]), "steer");
   assert.equal(textOf(out[3]), "exact reply");
   assert.equal(JSON.stringify(msgs), frozen);
@@ -151,18 +149,28 @@ test("S8 16000 bytes are replayed, 16001 are left out (not swapped for an older 
 });
 
 // ---------- S10: log rows (G8, G14) ----------
-test("S10 log rows: kinds, agent messages are work, ids stripped, caps, images", () => {
+test("S10 log rows: kinds, subagent/bot/routine messages are work, text kept, caps, images", () => {
   const rows = (m: Message) => logRows({ model: [m] });
   assert.deepEqual(rows(user("hi")).map((r) => r.kind), ["user"]);
-  assert.equal(rows(user("[subagent s answered, no reply needed] x"))[0].kind, "work");
-  const cross = rows(user('[message from session "T" (0ede04cb-d291-495f-bb43-fbb0e015c4b1)] hi'))[0];
-  assert.equal(cross.kind, "work");
-  assert.equal(cross.text, '[message from session "T"] hi');
+  for (const body of ['[subagent s answered, no reply needed] x', '[message from bot "scout"] hi', '[routine "morning"] check the news']) {
+    const [row] = rows(user(body));
+    assert.equal(row.kind, "work", body);
+    assert.equal(row.text, body);
+  }
+  assert.equal(rows(user('say [routine "x"] now'))[0].kind, "user"); // only a leading marker makes work
   assert.deepEqual(rows(answer("t", "toolUse", [call("1")])).map((r) => r.kind), ["talk", "tool"]);
   assert.deepEqual(rows(answer("t", "error")).map((r) => r.kind), ["talk", "echo"]);
   assert.equal(rows(result("1", "out"))[0].text, "bash: out");
   assert.ok(rows(user("q".repeat(300_000)))[0].text.length <= 200_000);
   assert.equal(rows({ role: "user", content: [{ type: "image", data: "A", mimeType: "image/png" }], timestamp: 1 } as UserMessage)[0].text, "[image]");
+});
+
+// ---------- S7b: previous exchange (G12), bots and routines ----------
+test("S7b a run started only by another bot or a routine is not the previous exchange", () => {
+  for (const body of ['[message from bot "lens"] ping', '[routine "daily"] go']) {
+    const msgs: Message[] = [user("real q"), answer("real a"), user(body), answer("reply to it"), user("now")];
+    assert.deepEqual(previousExchange(msgs, runStart(msgs)).map(textOf), ["real q", "real a"], body);
+  }
 });
 
 // ---------- S12: cursor (G3) ----------
@@ -185,6 +193,13 @@ test("S13 settledEnd on entries and runStart on context agree", () => {
   assert.equal(settledEnd(msgs.map((m) => ({ model: [m] }))), 5);
   assert.equal(runStart(ctx), 4);
   assert.equal(textOf(msgs[settledEnd(msgs.map((m) => ({ model: [m] }))) - 1]), textOf(ctx[runStart(ctx) - 1]));
+});
+
+test("S13b settled stops before a run still in flight; all would include it", () => {
+  const entries = [user("a"), answer("done"), user("b"), answer("", "toolUse", [call("1")]), result("1", "r")].map((m) => ({ model: [m] }));
+  assert.equal(settledEnd(entries), 2); // "settled" logs a, done; the run for b is logged by "all" as it goes
+  assert.equal(settledEnd(entries.slice(0, 2)), 2);
+  assert.equal(settledEnd([{ model: [user("a")] }]), 0);
 });
 
 // ---------- S14: compactor ----------

@@ -78,22 +78,57 @@ export async function serverFn(who: Actor | null, name: string, method: "GET" | 
   return { status: res.status, body: await res.text() };
 }
 
+/** Creates a bot through the server fn and returns its id (found in the user's state by its unique name). */
+export async function createBot(who: Actor, name: string, instructions = ""): Promise<string> {
+  const r = await serverFn(who, "createBot", "POST", { name, instructions });
+  assert.equal(r.status, 200, `createBot ${name} as ${who.name}: ${r.body}`);
+  const bot = (await userState(who)).bots.find((b) => b.name === name);
+  assert.ok(bot, `bot ${name} is not in ${who.name}'s state`);
+  return bot.id;
+}
+
+export async function deleteBot(who: Actor, botId: string) {
+  const r = await serverFn(who, "deleteBot", "POST", botId);
+  assert.equal(r.status, 200, `deleteBot ${botId} as ${who.name}: ${r.body}`);
+}
+
 // ---- local SQLite (read-only) ----
 export const LOCAL = `${ROOT}.alchemy/local`;
-export type Kind = "User" | "Chat" | "D1" | "metadata" | "other";
+export type Kind = "User" | "Bot" | "D1" | "metadata" | "other";
 /** DO/D1 files are named by id hash; metadata.sqlite is workerd bookkeeping. */
 export const kindOf = (file: string): Kind =>
-  file.endsWith("/metadata.sqlite") ? "metadata" : file.includes("-User/") ? "User" : file.includes("-Chat/") ? "Chat" : file.includes("/d1/") ? "D1" : "other";
+  file.endsWith("/metadata.sqlite") ? "metadata" : file.includes("-User/") ? "User" : file.includes("-Bot/") ? "Bot" : file.includes("/d1/") ? "D1" : "other";
 export const sqliteFiles = (dir = LOCAL): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? sqliteFiles(join(dir, e.name)) : e.name.endsWith(".sqlite") ? [join(dir, e.name)] : [])).sort();
 
 export function query<T>(file: string, sql: string, ...args: string[]): T[] {
   const db = new DatabaseSync(file, { readOnly: true });
   try {
-    return db.prepare(sql).all(...args) as T[];
+    const statement = db.prepare(sql);
+    statement.setReadBigInts(true); // some columns (alarm times) exceed 2^53
+    return statement.all(...args) as T[];
   } finally {
     db.close();
   }
+}
+
+/** The local User DO file whose bot catalog lists `botId` (old files from before the bots model have no such table). */
+export const userFileOf = (botId: string) =>
+  sqliteFiles().find((f) => kindOf(f) === "User" && query(f, "SELECT 1 FROM sqlite_master WHERE name = 'bots'").length && query(f, "SELECT 1 FROM bots WHERE id = ?", botId).length);
+
+/** The local Bot DO file of the bot with this (unique) name: its profile kv entry holds the name. */
+export const botFileOf = (name: string) =>
+  sqliteFiles().find(
+    (f) => kindOf(f) === "Bot" && query(f, "SELECT 1 FROM sqlite_master WHERE name = '_cf_KV'").length && query<{ value: Uint8Array }>(f, "SELECT value FROM _cf_KV WHERE key = 'bot:profile'").some((r) => Buffer.from(r.value).includes(name)),
+  );
+
+export type MemoryStats = { entries: number; nodes: number; lines: number; viewBytes: number; budget: number; pending: number; building: number };
+/** A bot's OptChat stats, read through the same server fn the details panel uses (botDetails -> `{ memory, routines }`). */
+export async function memoryStats(who: Actor, botId: string): Promise<MemoryStats> {
+  const r = await serverFn(who, "botDetails", "GET", botId);
+  assert.equal(r.status, 200, `botDetails ${botId}: ${r.body}`);
+  const memory = JSON.parse(r.body).p.v[0].p.v[0].p as { k: string[]; v: { s: number }[] }; // seroval: result.memory, the first property of the result object
+  return Object.fromEntries(memory.k.map((k, i) => [k, memory.v[i].s])) as MemoryStats;
 }
 
 // ---- result table ----
@@ -111,10 +146,10 @@ export function finish(rows: Row[]): never {
   process.exit(failed ? 1 : 0);
 }
 
-/** Sends one message to a chat over its socket and resolves with the run's final answer text (the last assistant message
+/** Sends one message to a bot over its socket and resolves with the run's final answer text (the last assistant message
  * committed before run_end). */
-export async function ask(actor: Actor, chatId: string, input: string, timeoutMs = 180_000): Promise<string> {
-  const ws = await openSocket(`/agents/chat/${actor.id}--${chatId}`, actor.cookie);
+export async function ask(actor: Actor, botId: string, input: string, timeoutMs = 180_000): Promise<string> {
+  const ws = await openSocket(`/agents/bot/${actor.id}--${botId}`, actor.cookie);
   const id = `ask-${Math.random().toString(16).slice(2)}`;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => (ws.close(), reject(new Error(`no run_end within ${timeoutMs / 1000}s for "${input.slice(0, 40)}"`))), timeoutMs);

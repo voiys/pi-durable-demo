@@ -1,14 +1,15 @@
 // User B (and an anonymous caller) attack user A through every agent door and the server fns.
 // Run: node scripts/isolation.ts (dev server up; SEED=n picks another random set). Exit 1 on any leak.
-// Creates chats for the test users when they have fewer than A=2 / B=1.
+// Creates (and in the end deletes) a victim bot for A that takes every mutating attack, so A's own bots are only ever read;
+// B gets a bot if it has none, and A one if it has none. Bots that existed before are never touched.
 import assert from "node:assert/strict";
 import WebSocket from "ws";
-import type { ChatSummary } from "../src/shared.ts";
-import { finish, origin, serverFn, signIn, userState, wsOrigin, type Actor, type Row } from "./lib.ts";
+import { createBot, deleteBot, finish, kindOf, origin, query, serverFn, signIn, sqliteFiles, userFileOf, userState, wsOrigin, type Actor, type Row } from "./lib.ts";
 
 // Refused = one of these statuses, or a socket that never opens. Anything else (2xx, open socket, hang) is a leak.
 const REFUSED = new Set([400, 401, 403, 404]);
 const rows: Row[] = [];
+let needles: string[] = []; // what would identify A's data in a response (set once A's bots are known)
 const record = (name: string, ok: boolean, detail: string) => rows.push({ status: ok ? "PASS" : "FAIL", name, detail });
 
 function wsOutcome(path: string, cookie?: string): Promise<{ refused: boolean; actual: string }> {
@@ -35,113 +36,144 @@ async function probe(label: string, who: Actor | null, path: string, transport: 
   record(name, REFUSED.has(res.status) && !leak, leak ? `${res.status}, body leaks ${leak}` : String(res.status));
 }
 
-const ensureChats = async (who: Actor, n: number): Promise<ChatSummary[]> => {
-  for (let i = (await userState(who)).chats.length; i < n; i++) {
-    const r = await serverFn(who, "createChat", "POST", undefined);
-    assert.equal(r.status, 200, `createChat as ${who.name}: ${r.body}`);
-  }
-  return (await userState(who)).chats;
-};
-
+const tag = Math.random().toString(16).slice(2, 8);
 const A = await signIn("a");
 const B = await signIn("b");
 assert.notEqual(A.id, B.id);
-const aChats = await ensureChats(A, 2);
-const bChats = await ensureChats(B, 1);
-console.log(`A=${A.id} chats=${aChats.length}; B=${B.id} chats=${bChats.length}; running...`);
-// What would identify A's data in a response. Default titles are shared by everyone, so they don't count.
-const needles = [A.id, ...aChats.flatMap((c) => [c.id, ...(/^New (Opt)?[Cc]hat$/.test(c.title) ? [] : [c.title])])];
+const created: [Actor, string][] = [];
+const make = async (who: Actor, name: string, instructions = "") => {
+  const id = await createBot(who, `${name}-${tag}`, instructions);
+  created.push([who, id]);
+  return id;
+};
+const botFiles = () => sqliteFiles().filter((f) => kindOf(f) === "Bot");
 
-// Positive control: the test is meaningless if the legit door is shut too.
-const control = await wsOutcome(`/agents/user/${A.id}`, A.cookie);
-record("control: A opens A's own User socket", control.actual === "OPEN", control.actual);
-const chatControl = await wsOutcome(`/agents/chat/${B.id}--${bChats[0].id}`, B.cookie);
-record("control: B opens B's own Chat socket", chatControl.actual === "OPEN", chatControl.actual);
+try {
+  const victim = await make(A, "iso-victim", `Private instructions of A ${tag}`);
+  if (!(await userState(A)).bots.some((b) => b.id !== victim)) await make(A, "iso-a");
+  if (!(await userState(B)).bots.length) await make(B, "iso-b");
+  const aBots = (await userState(A)).bots;
+  const bBots = (await userState(B)).bots;
+  const victimBefore = JSON.stringify(aBots.find((b) => b.id === victim));
+  console.log(`A=${A.id} bots=${aBots.length}; B=${B.id} bots=${bBots.length}; running...`);
+  needles = [A.id, ...aBots.flatMap((b) => [b.id, b.name, ...(b.instructions.length >= 8 ? [b.instructions] : [])])];
 
-const c0 = aChats[0].id;
-const attacks = [
-  `/agents/user/${A.id}`,
-  ...aChats.map((c) => `/agents/chat/${A.id}--${c.id}`),
-  ...aChats.map((c) => `/agents/chat/${B.id}--${c.id}`),
-  `/agents/chat/${B.id}--random`,
-  // path tricks
-  `/agents/user/${A.id}%2F`,
-  `/agents/user%2F${A.id}`,
-  `/agents%2Fuser/${A.id}`,
-  `/agents/chat/${A.id}%2D%2D${c0}`,
-  `/agents/chat%2F${A.id}--${c0}`,
-  `/agents/chat/${A.id}--${c0}/extra`,
-  `/agents/chat/${A.id}--${c0}/`,
-  `/agents/chat/${A.id}--${c0}.`,
-  `/agents/chat/${A.id}.--${c0}`,
-  `/agents/user/${A.id}.`,
-  `/agents/user/${A.id}/extra`,
-  `/agents/User/${A.id}`,
-  `/agents/Chat/${A.id}--${c0}`,
-  `/agents/CHAT/${A.id}--${c0}`,
-  `/agents/chat/${A.id}--${c0}?session=${c0}`,
-  `/agents/chat/${A.id}--${c0}?session=x`,
-  `/agents/user/${A.id}?session=${c0}`,
-  `/agents/chat/${A.id}----${c0}`,
-  `/agents/chat/${B.id}--${A.id}--${c0}`,
-  `/agents/chat/${B.id}----${c0}`,
-  `/agents/chat/${B.id}--${c0}--${c0}`,
-  `/agents/chat/${B.id}${A.id}--${c0}`,
-  `/agents/chat/${B.id}--../${A.id}--${c0}`,
-  `/agents/chat/${B.id}--%2e%2e%2F${A.id}--${c0}`,
-  `/agents/chat/${B.id}%2F..%2F${A.id}--${c0}`,
-  `/agents/chat/${B.id}--${c0}?name=${A.id}--${c0}`,
-  `/agents/user/${B.id}/../${A.id}`,
-  `/agents/user/%${A.id}`,
-  // empty segments: the gate and routeAgentRequest split the path differently
-  `/agents/user//${A.id}`,
-  `/agents//user/${A.id}`,
-  `/agents/chat//${A.id}--${c0}`,
-];
-for (const who of [B, null]) for (const p of attacks) for (const t of ["HTTP", "WS"] as const) await probe("", who, p, t);
+  // Positive control: the test is meaningless if the legit door is shut too.
+  const control = await wsOutcome(`/agents/user/${A.id}`, A.cookie);
+  record("control: A opens A's own User socket", control.actual === "OPEN", control.actual);
+  const botControl = await wsOutcome(`/agents/bot/${B.id}--${bBots[0].id}`, B.cookie);
+  record("control: B opens B's own Bot socket", botControl.actual === "OPEN", botControl.actual);
+  const detailsControl = await serverFn(A, "botDetails", "GET", victim);
+  record("control: A reads A's own bot details", detailsControl.status === 200, String(detailsControl.status));
 
-// FTS: a word from a titled chat of A's (titles are A's first message) must find A's chat for A and nothing of A's for B.
-const word = aChats.map((c) => c.title).find((t) => !/^New (Opt)?[Cc]hat$/.test(t))?.match(/[A-Za-z]{4,}/)?.[0];
-if (word) {
-  const own = await serverFn(A, "searchMessages", "GET", word);
-  record(`control: A searchMessages(${word}) finds A's chat`, own.status === 200 && aChats.some((c) => own.body.includes(c.id)), String(own.status));
-}
-// Server fns as B and anonymous against A's chats and the search index. B may search (own index) but must see nothing of A's.
-for (const who of [B, null]) {
-  const calls: [string, "GET" | "POST", unknown][] = [
-    ...aChats.flatMap((c): [string, "GET" | "POST", unknown][] => [
-      ["setChatModel", "POST", { chatId: c.id, model: "x", thinkingLevel: "low" }],
-      ["renameChat", "POST", { chatId: c.id, title: "pwned" }],
-      ["deleteChat", "POST", c.id],
-    ]),
-    ...(who ? [] : [["createChat", "POST", undefined] as [string, "POST", undefined]]),
-    ["searchMessages", "GET", word ?? "chat"],
+  const botsBefore = botFiles().length;
+  const b0 = aBots[0].id;
+  const attacks = [
+    `/agents/user/${A.id}`,
+    ...aBots.map((b) => `/agents/bot/${A.id}--${b.id}`),
+    ...aBots.map((b) => `/agents/bot/${B.id}--${b.id}`),
+    `/agents/bot/${B.id}--random`,
+    // path tricks
+    `/agents/user/${A.id}%2F`,
+    `/agents/user%2F${A.id}`,
+    `/agents%2Fuser/${A.id}`,
+    `/agents/bot/${A.id}%2D%2D${b0}`,
+    `/agents/bot%2F${A.id}--${b0}`,
+    `/agents/bot/${A.id}--${b0}/extra`,
+    `/agents/bot/${A.id}--${b0}/`,
+    `/agents/bot/${A.id}--${b0}.`,
+    `/agents/bot/${A.id}.--${b0}`,
+    `/agents/user/${A.id}.`,
+    `/agents/user/${A.id}/extra`,
+    `/agents/User/${A.id}`,
+    `/agents/Bot/${A.id}--${b0}`,
+    `/agents/BOT/${A.id}--${b0}`,
+    `/agents/bot/${A.id}--${b0}?session=${b0}`,
+    `/agents/bot/${A.id}--${b0}?session=x`,
+    `/agents/user/${A.id}?session=${b0}`,
+    `/agents/bot/${A.id}----${b0}`,
+    `/agents/bot/${B.id}--${A.id}--${b0}`,
+    `/agents/bot/${B.id}----${b0}`,
+    `/agents/bot/${B.id}--${b0}--${b0}`,
+    `/agents/bot/${B.id}${A.id}--${b0}`,
+    `/agents/bot/${B.id}--../${A.id}--${b0}`,
+    `/agents/bot/${B.id}--%2e%2e%2F${A.id}--${b0}`,
+    `/agents/bot/${B.id}%2F..%2F${A.id}--${b0}`,
+    `/agents/bot/${B.id}--${b0}?name=${A.id}--${b0}`,
+    `/agents/user/${B.id}/../${A.id}`,
+    `/agents/user/%${A.id}`,
+    // empty segments: the gate and routeAgentRequest split the path differently
+    `/agents/user//${A.id}`,
+    `/agents//user/${A.id}`,
+    `/agents/bot//${A.id}--${b0}`,
+    // a bot id that is not in the catalog (minting): own prefix, A's prefix, a victim-looking id
+    `/agents/bot/${B.id}--${crypto.randomUUID()}`,
+    `/agents/bot/${A.id}--${crypto.randomUUID()}`,
   ];
-  for (const [name, method, data] of calls) {
-    const r = await serverFn(who, name, method, data);
-    const leak = needles.find((n) => r.body.includes(n));
-    const mustFail = !(who && name === "searchMessages");
-    record(`${who?.name ?? "anon"} serverFn ${name}(${typeof data === "string" ? data.slice(0, 8) : "..."})`, !leak && (!mustFail || r.status >= 400), leak ? `${r.status}, leaks ${leak}` : String(r.status));
+  for (const who of [B, null]) for (const p of attacks) for (const t of ["HTTP", "WS"] as const) await probe("", who, p, t);
+
+  // FTS: a word from A's indexed messages must find A's bot for A and nothing of A's for B.
+  const aIds = aBots.map((b) => b.id);
+  const userFile = userFileOf(aIds[0]);
+  const word = userFile && query<{ c0: string }>(userFile, `SELECT c0 FROM messages_content WHERE c1 IN (${aIds.map(() => "?").join(",")})`, ...aIds).map((r) => r.c0.match(/[A-Za-z]{5,}/)?.[0]).find(Boolean);
+  if (word) {
+    const own = await serverFn(A, "searchMessages", "GET", word);
+    record(`control: A searchMessages(${word}) finds one of A's bots`, own.status === 200 && aIds.some((id) => own.body.includes(id)), String(own.status));
   }
-}
-const bState = JSON.stringify(await userState(B));
-const bLeak = needles.find((n) => bState.includes(n));
-record("B's own User agent state has none of A's ids/titles", !bLeak, bLeak ?? "clean");
+  // Server fns as B and anonymous. Every fn that takes a botId is aimed at the victim (and one unknown id): 4xx and no A data.
+  // B may search (its own index) but must see nothing of A's.
+  const withBot = (id: string): [string, "GET" | "POST", unknown][] => [
+    ["updateBot", "POST", { botId: id, name: "pwned", instructions: "pwned" }],
+    ["deleteBot", "POST", id],
+    ["setBotModel", "POST", { botId: id, model: "x", thinkingLevel: "low" }],
+    ["botDetails", "GET", id],
+    ["setMemoryBudget", "POST", { botId: id, bytes: 2000 }],
+    ["resetMemory", "POST", id],
+    ["setRoutineEnabled", "POST", { botId: id, id: "r", enabled: false }],
+    ["deleteRoutine", "POST", { botId: id, id: "r" }],
+    ["retireSubagent", "POST", { botId: id, name: "x" }],
+  ];
+  for (const who of [B, null]) {
+    const calls: [string, "GET" | "POST", unknown][] = [
+      ...withBot(victim),
+      ...withBot(crypto.randomUUID()).slice(0, 4),
+      ...(who ? [] : ([["createBot", "POST", { name: "pwned", instructions: "" }], ["modelOptions", "GET", undefined], ["connectChatGPT", "POST", undefined], ["disconnectChatGPT", "POST", undefined]] as [string, "GET" | "POST", unknown][])),
+      ["searchMessages", "GET", word ?? "bot"],
+    ];
+    for (const [name, method, data] of calls) {
+      const r = await serverFn(who, name, method, data);
+      const leak = needles.find((n) => r.body.includes(n));
+      const mustFail = !(who && name === "searchMessages");
+      record(`${who?.name ?? "anon"} serverFn ${name}(${typeof data === "string" ? data.slice(0, 8) : "..."})`, !leak && (!mustFail || r.status >= 400), leak ? `${r.status}, leaks ${leak}` : String(r.status));
+    }
+  }
+  const bState = JSON.stringify(await userState(B));
+  const bLeak = needles.find((n) => bState.includes(n));
+  record("B's own User agent state has none of A's ids/names/instructions", !bLeak, bLeak ?? "clean");
 
-// Randomized names/paths mixing A/B ids, chat ids and separators.
-let seed = Number(process.env.SEED ?? 1);
-const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
-const pick = <T>(xs: T[]): T => xs[Math.floor(rnd() * xs.length)];
-const pool = [A.id, B.id, ...aChats.map((c) => c.id), ...bChats.map((c) => c.id), "random", "", "..", "."];
-const seps = ["--", "--", "-", "---", "%2F", "/", "%2D%2D", ".", ""];
-const legit = new Set([`/agents/user/${B.id}`, ...bChats.map((c) => `/agents/chat/${B.id}--${c.id}`)]);
-for (let n = 1; n <= 200; ) {
-  const parts = Array.from({ length: 1 + Math.floor(rnd() * 3) }, () => pick(pool));
-  const name = parts.slice(1).reduce((acc, p) => acc + pick(seps) + p, parts[0]);
-  const path = `/agents/${pick(["user", "chat", "User", "Chat", "chat", "user"])}/${name}${pick(["", "", "", "/", ".", `?session=${pick(pool)}`])}`;
-  if (legit.has(path)) continue;
-  await probe(`rand#${n++} `, rnd() < 0.8 ? B : null, path, rnd() < 0.5 ? "WS" : "HTTP");
-}
+  // Randomized names/paths mixing A/B ids, bot ids and separators.
+  let seed = Number(process.env.SEED ?? 1);
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+  const pick = <T>(xs: T[]): T => xs[Math.floor(rnd() * xs.length)];
+  const pool = [A.id, B.id, ...aBots.map((b) => b.id), ...bBots.map((b) => b.id), "random", "", "..", "."];
+  const seps = ["--", "--", "-", "---", "%2F", "/", "%2D%2D", ".", ""];
+  const legit = new Set([`/agents/user/${B.id}`, ...bBots.map((b) => `/agents/bot/${B.id}--${b.id}`)]);
+  for (let n = 1; n <= 200; ) {
+    const parts = Array.from({ length: 1 + Math.floor(rnd() * 3) }, () => pick(pool));
+    const name = parts.slice(1).reduce((acc, p) => acc + pick(seps) + p, parts[0]);
+    const path = `/agents/${pick(["user", "bot", "User", "Bot", "bot", "user"])}/${name}${pick(["", "", "", "/", ".", `?session=${pick(pool)}`])}`;
+    if (legit.has(path.split("?")[0])) continue;
+    await probe(`rand#${n++} `, rnd() < 0.8 ? B : null, path, rnd() < 0.5 ? "WS" : "HTTP");
+  }
 
-if (!word) console.log("NOT COVERED: FTS message text. A has no titled (= messaged) chat, so B's search proves nothing; run scripts/lineage.ts first.\n");
+  // Nothing above may have minted a Bot object (its SQLite file) or changed the victim.
+  const minted = botFiles().length - botsBefore;
+  record("attacks minted no Bot objects", minted === 0, `${minted} new Bot file(s)`);
+  const victimAfter = JSON.stringify((await userState(A)).bots.find((b) => b.id === victim));
+  record("victim bot unchanged after every mutating attack", victimAfter === victimBefore, victimAfter === victimBefore ? "same name/instructions" : `${victimBefore} -> ${victimAfter}`);
+
+  if (!word) console.log("NOT COVERED: FTS message text. None of A's bots has an indexed message, so B's search proves nothing; message a bot of A's first (scripts/lineage.ts does).\n");
+} finally {
+  for (const [who, id] of created.reverse()) await deleteBot(who, id);
+}
 finish(rows);

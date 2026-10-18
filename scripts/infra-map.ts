@@ -19,13 +19,13 @@ const loc = (h: { file: string; n: number }) => `${h.file.replace(/^src\//, "")}
 const locs = (hs: { file: string; n: number }[]) => (hs.length ? hs.map(loc).join(", ") : "-");
 
 // Which DO object each source file belongs to (the one class file that owns the storage it touches).
-const OBJECT_OF_FILE: Record<string, string> = { "src/server/user.ts": "User", "src/server/chat.ts": "Chat", "src/optchat/store.ts": "User" };
+const OBJECT_OF_FILE: Record<string, string> = { "src/server/user.ts": "User", "src/server/bot.ts": "Bot", "src/optchat/store.ts": "Bot" };
 const objectOf = (file: string) => OBJECT_OF_FILE[file] ?? assert(false, `${file} touches storage/RPC but is not attributed to an object`);
 // Caller label (and mermaid node) per file for RPC edges.
 const CALLER_OF = (file: string) =>
   OBJECT_OF_FILE[file] ??
   (file === "src/worker.ts" ? "Worker gate" : file === "src/server/fns.ts" ? "Server fns" : file.startsWith("src/routes/") ? "Worker route" : assert(false, `${file} makes RPC calls but has no caller label`));
-const NODE: Record<string, string> = { User: "User", Chat: "Chat", "Worker gate": "Gate", "Server fns": "Fns", "Worker route": "Routes" };
+const NODE: Record<string, string> = { User: "User", Bot: "Bot", "Worker gate": "Gate", "Server fns": "Fns", "Worker route": "Routes" };
 
 function assert(cond: unknown, msg: string): never | void {
   if (!cond) throw new Error(msg);
@@ -44,15 +44,17 @@ const RULES: { binding?: string; obj: string; key: string; owner: string; probes
     ],
   },
   {
-    binding: "Chat", obj: "Chat", key: "`<userId>--<chatId>`", owner: "one instance per chat in the user's User catalog",
+    binding: "Bot", obj: "Bot", key: "`<userId>--<botId>`", owner: "one instance per bot in the user's User catalog",
     probes: [
-      { file: "src/shared.ts", re: /chatObjectName = \(userId: string, chatId: string\) => `\$\{userId\}--\$\{chatId\}`/, why: "chatObjectName builds userId--chatId" },
-      { file: "src/worker.ts", re: /name\?\.startsWith\(`\$\{id\}--`\)/, why: "gate: chat name must start with the caller's id" },
-      { file: "src/worker.ts", re: /env\.User\.getByName\(id\)\.hasChat\(chatId\)/, why: "gate: chatId must be in the caller's catalog" },
-      { file: "src/server/fns.ts", re: /hasChat\(chatId\)\)\) throw[\s\S]*env\.Chat\.getByName\(chatObjectName\(await owner\(chatId\), chatId\)\)/, why: "server fns: hasChat (owner) before opening the Chat" },
-      { file: "src/server/user.ts", re: /^(?![\s\S]*env\.Chat\.getByName\((?!chatObjectName\(this\.name, chatId\)\)))/, why: "User opens only its own chats (chatObjectName(this.name, chatId))" },
-      { file: "src/server/chat.ts", re: /userId = this\.#name\.split\("--"\)\[0\][\s\S]*chatId = this\.#name\.split\("--"\)\[1\]/, why: "Chat parses userId--chatId from its name" },
-      { file: "src/server/chat.ts", re: /this\.env\.Chat\.getByName\(`\$\{this\.userId\}--\$\{chatId\}`\)\.receive/, why: "Chat-to-Chat stays inside the same user" },
+      { file: "src/shared.ts", re: /botObjectName = \(userId: string, botId: string\) => `\$\{userId\}--\$\{botId\}`/, why: "botObjectName builds userId--botId" },
+      { file: "src/worker.ts", re: /name\?\.startsWith\(`\$\{id\}--`\)/, why: "gate: bot name must start with the caller's id" },
+      { file: "src/worker.ts", re: /env\.User\.getByName\(id\)\.hasBot\(botId\)/, why: "gate: botId must be in the caller's catalog" },
+      { file: "src/worker.ts", re: /segments\.length !== 4\) return new Response\("Not found", \{ status: 404 \}\)/, why: "gate: exactly /agents/<kind>/<name>, no sub-paths" },
+      { file: "src/server/fns.ts", re: /hasBot\(botId\)\)\) throw[\s\S]*env\.Bot\.getByName\(botObjectName\(await owner\(botId\), botId\)\)/, why: "server fns: hasBot (owner) before opening the Bot" },
+      { file: "src/server/user.ts", re: /^(?![\s\S]*env\.Bot\.getByName\((?!botObjectName\(this\.name, botId\)\)))/, why: "User opens only its own bots (botObjectName(this.name, botId))" },
+      { file: "src/server/bot.ts", re: /userId = this\.#name\.split\("--"\)\[0\][\s\S]*botId = this\.#name\.split\("--"\)\[1\]/, why: "Bot parses userId--botId from its name" },
+      { file: "src/server/bot.ts", re: /this\.env\.Bot\.getByName\(`\$\{this\.userId\}--\$\{botId\}`\)\.receive/, why: "Bot-to-Bot stays inside the same user" },
+      { file: "src/server/bot.ts", re: /this\.env\.User\.getByName\(this\.userId\)/, why: "Bot reaches only its owner's User" },
     ],
   },
   {
@@ -79,10 +81,10 @@ const tables = [
 ];
 const kvOps = hits(SRC, /(?:kv\.(get|put|delete)|#(kv)<[^>]*>)\(\s*"([^"]+)"/).map((h) => ({ obj: objectOf(h.file), key: h.m[3], write: h.m[1] === "put" || h.m[1] === "delete", at: h }));
 const RPC_RES: [RegExp, number, number | string][] = [
-  [/\benv\.(User|Chat)\.getByName\((?:[^()]|\([^()]*\))*\)\.(\w+)\(/g, 2, 1],
+  [/\benv\.(User|Bot)\.getByName\((?:[^()]|\([^()]*\))*\)\.(\w+)\(/g, 2, 1],
   [/#user\(\)\.(\w+)\(/g, 1, "User"],
   [/\(await user\(\)\)\.(\w+)\(/g, 1, "User"],
-  [/\(await chat\([^()]*\)\)\.(\w+)\(/g, 1, "Chat"],
+  [/\(await bot\([^()]*\)\)\.(\w+)\(/g, 1, "Bot"],
 ];
 const rpcs = SRC.flatMap((file) =>
   RPC_RES.flatMap(([re, mi, ti]) => hits([file], re).map((h) => ({ from: CALLER_OF(file), to: typeof ti === "number" ? h.m[ti] : ti, method: h.m[mi], at: h }))),
@@ -102,8 +104,8 @@ assert(bindings.length && rpcs.length && kvOps.length && tables.length, "extract
 
 const routes: { path: string; rule: string }[] = [];
 const gatePrefix = worker.match(/pathname\.startsWith\("([^"]+)"\)/)?.[1] ?? assert(false, "no /agents/ prefix in worker.ts");
-const GATE_RULE = { user: "401 without session; 403 unless `name` is the caller's id", chat: "401 without session; 403 unless `name` is `<callerId>--<chatId>` and `User.hasChat(chatId)`" };
-for (const k of worker.matchAll(/kind === "(\w+)"/g)) routes.push({ path: `${gatePrefix}${k[1]}/:name`, rule: GATE_RULE[k[1] as "user" | "chat"] ?? assert(false, `no rule text for gate kind ${k[1]}`) });
+const GATE_RULE = { user: "401 without session; 404 unless exactly `/agents/user/:name`; 403 unless `name` is the caller's id", bot: "401 without session; 404 unless exactly `/agents/bot/:name`; 403 unless `name` is `<callerId>--<botId>` and `User.hasBot(botId)`" };
+for (const k of worker.matchAll(/kind === "(\w+)"/g)) routes.push({ path: `${gatePrefix}${k[1]}/:name`, rule: GATE_RULE[k[1] as "user" | "bot"] ?? assert(false, `no rule text for gate kind ${k[1]}`) });
 routes.push({ path: "everything else", rule: "TanStack Start handler (rule per route below)" });
 for (const h of hits(walk("src/routes", /\.tsx?$/).map((f) => f), /createFileRoute\("([^"]+)"\)/)) {
   const src = read(h.file);
@@ -113,13 +115,13 @@ for (const h of hits(walk("src/routes", /\.tsx?$/).map((f) => f), /createFileRou
 const fnsSrc = read("src/server/fns.ts");
 for (const block of fnsSrc.split("export const ").slice(1)) {
   const [, name, method] = block.match(/^(\w+) = createServerFn\(\{ method: "(\w+)" \}\)/) ?? assert(false, "unparsed server fn");
-  const rule = /\(await chat\(|await owner\(/.test(block) ? "`requireUser` + `User.hasChat`" : /\(await user\(\)\)/.test(block) ? "`requireUser`" : /getSession/.test(block) ? "public (returns session or null)" : assert(false, `no rule for server fn ${name}`);
+  const rule = /\(await bot\(|await owner\(/.test(block) ? "`requireUser` + `User.hasBot`" : /\(await user\(\)\)/.test(block) ? "`requireUser`" : /getSession/.test(block) ? "public (returns session or null)" : assert(false, `no rule for server fn ${name}`);
   routes.push({ path: `serverFn ${name} (${method})`, rule });
 }
 
 // ---- SQLite (read-only) ----
 // Per object kind: how many local instances, and in how many of them each table exists.
-const sqlite: Record<string, { count: number; tables: Map<string, number> }> = { D1: { count: 0, tables: new Map() }, User: { count: 0, tables: new Map() }, Chat: { count: 0, tables: new Map() } };
+const sqlite: Record<string, { count: number; tables: Map<string, number> }> = { D1: { count: 0, tables: new Map() }, User: { count: 0, tables: new Map() }, Bot: { count: 0, tables: new Map() } };
 for (const file of sqliteFiles().filter((f) => kindOf(f) in sqlite)) {
   const k = sqlite[kindOf(file)];
   k.count++;
@@ -127,7 +129,7 @@ for (const file of sqliteFiles().filter((f) => kindOf(f) in sqlite)) {
 }
 const ftsShadow = (obj: string) => tables.filter((t) => t.obj === obj && t.virtual).map((t) => new RegExp(`^${t.name}_(config|content|data|docsize|idx)$`));
 const LIBS: [RegExp, string, string][] = [
-  [/^pi_/, "pi-durable (PiHarness)", "chat"],
+  [/^pi_/, "pi-durable (PiHarness)", "bot"],
   [/^cf_agents?/, "agents SDK (Agent / Lifecycle)", "agent"],
   [/^_cf_/, "workerd internals", "runtime"],
   [/^__alchemy_migrations$/, "alchemy", "shared"],
@@ -146,7 +148,7 @@ type Check = { id: string; name: string; ok: boolean; detail: string };
 const classOf = (obj: string) => bindings.find((b) => b.name === obj)!;
 function checks(): Check[] {
   const out: Check[] = [];
-  const OBJS = ["D1", "User", "Chat"];
+  const OBJS = ["D1", "User", "Bot"];
   for (const obj of OBJS) {
     const u = unexplained(obj);
     out.push({ id: "a", name: `SQLite tables explained [${obj}]`, ok: !u.length, detail: u.length ? `not in code or a library prefix: ${u.join(", ")}` : `${real(obj).length} tables, ${sqlite[obj].count} instance(s)` });
@@ -172,7 +174,7 @@ function checks(): Check[] {
 // ---- Render ----
 const esc = (s: string) => s.replaceAll("|", "\\|");
 const table = (head: string[], rows: string[][]) => [`| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`, ...rows.map((r) => `| ${r.map(esc).join(" | ")} |`)].join("\n");
-const SCOPE: Record<string, string> = { User: "user", Chat: "chat", D1: "shared" };
+const SCOPE: Record<string, string> = { User: "user", Bot: "bot", D1: "shared" };
 const tick = (s: string) => `\`${s}\``;
 
 function render(): string {
@@ -188,12 +190,12 @@ function render(): string {
     '  Routes["Routes<br/>src/routes"]',
     '  Auth["better-auth<br/>src/server/auth.ts"]',
     '  User[("User DO<br/>one per user")]',
-    '  Chat[("Chat DO<br/>one per chat")]',
+    '  Bot[("Bot DO<br/>one per bot")]',
     '  D1[("D1<br/>auth tables")]',
     `  Browser -->|"WebSocket ${gatePrefix}*"| Gate`,
     '  Browser -->|"RPC over HTTP"| Fns',
     '  Browser -->|"pages, auth"| Routes',
-    ...[...worker.matchAll(/kind === "(\w+)"/g)].map((k) => `  Gate -->|"routeAgentRequest ${k[1]}"| ${k[1] === "user" ? "User" : "Chat"}`),
+    ...[...worker.matchAll(/kind === "(\w+)"/g)].map((k) => `  Gate -->|"routeAgentRequest ${k[1]}"| ${k[1] === "user" ? "User" : "Bot"}`),
     ...authUsers.map(([, n]) => `  ${n} --> Auth`).filter((l, i, a) => a.indexOf(l) === i),
     "  Auth -->|SQL| D1",
     ...[...edges].map(([k, v]) => `  ${k.split("|")[0]} -->|"${[...v].sort().join(", ")}"| ${k.split("|")[1]}`),
@@ -209,7 +211,7 @@ function render(): string {
   );
 
   const rows: string[][] = [];
-  for (const obj of ["D1", "User", "Chat"]) {
+  for (const obj of ["D1", "User", "Bot"]) {
     const present = (n: string) => (sqlite[obj].count ? (sqlite[obj].tables.has(n) ? "yes" : "no") : "n/a");
     for (const t of tables.filter((t) => t.obj === obj)) {
       const w = obj === "D1" ? "better-auth (server/auth.ts)" : locs(hits(Object.keys(OBJECT_OF_FILE).filter((f) => OBJECT_OF_FILE[f] === obj), new RegExp(`\\b(?:INSERT(?:\\s+OR\\s+\\w+)?\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+${t.name}\\b`, "i")));
@@ -251,7 +253,7 @@ function render(): string {
     "",
     "## Storage",
     "",
-    "Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents SDK runtime state, `runtime` = workerd.",
+    "Scope: `user`/`bot` = per User/Bot instance, `shared` = D1, `agent` = agents SDK runtime state, `runtime` = workerd.",
     "",
     storage,
     "",
