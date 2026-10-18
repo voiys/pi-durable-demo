@@ -42,7 +42,7 @@ export function AgentMessage({ msg, chat }: { msg: AgentMsg; chat?: ChatSummary 
             <TraceCollapsibleTrigger>
               <TraceLine status={failed ? "error" : undefined}>
                 <TraceIcon>{failed ? <CircleAlertIcon /> : <CircleCheckIcon />}</TraceIcon>
-                <TraceTitle>
+                <TraceTitle className="whitespace-normal">
                   Subagent <Chip kind="agent" label={msg.from} /> {failed ? "failed" : "answered"}
                 </TraceTitle>
                 {!failed && <TraceDescription>no reply needed</TraceDescription>}

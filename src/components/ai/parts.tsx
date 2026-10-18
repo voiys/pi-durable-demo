@@ -133,10 +133,11 @@ function Tool({ call, ctx }: { call: ToolCall; ctx: ToolContext }) {
   const s = step(call, output, phase === "running", ctx);
   const description = phase === "interrupted" ? "interrupted" : s.description;
   const line = (
+    // Wraps instead of truncating: a long query, chip or description stays readable at narrow widths.
     <TraceLine status={{ running: "running", interrupted: "pending", error: "error", done: undefined }[phase] as "running" | "pending" | "error" | undefined}>
       <TraceIcon>{s.icon}</TraceIcon>
-      <TraceTitle>{s.title}</TraceTitle>
-      {description && <TraceDescription className="min-w-0 shrink truncate">{description}</TraceDescription>}
+      <TraceTitle className="whitespace-normal">{s.title}</TraceTitle>
+      {description && <TraceDescription className="min-w-0 whitespace-normal">{description}</TraceDescription>}
     </TraceLine>
   );
   if (phase === "running" || phase === "interrupted") return line;

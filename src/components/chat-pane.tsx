@@ -60,6 +60,8 @@ export function Row({ turn, ctx, highlight, enter, reduceMotion }: { turn: PiTur
       <Bubble align="end" variant="muted">
         <BubbleContent className="whitespace-pre-wrap">{text}</BubbleContent>
       </Bubble>
+    ) : turn.live && !turn.parts.length ? (
+      THINKING
     ) : (
       groupParts(turn.parts).map((g, i, groups) =>
         "text" in g ? (
@@ -84,7 +86,8 @@ export function Row({ turn, ctx, highlight, enter, reduceMotion }: { turn: PiTur
     >
       <Message
         align={human ? "end" : "start"}
-        className={cn("rounded-lg ring-2 ring-offset-4 ring-offset-background transition-shadow duration-150", highlight ? "ring-ring/50" : "ring-transparent")}
+        // A background, not a ring: MessageScrollerItem's content-visibility clips anything drawn outside it.
+        className={cn("rounded-lg transition-colors duration-150", highlight && "bg-highlight")}
       >
         {agent ? (
           <AgentMessage msg={agent} chat={ctx.chat} />
@@ -106,15 +109,17 @@ export function Row({ turn, ctx, highlight, enter, reduceMotion }: { turn: PiTur
 }
 
 /** Between sending and pi's first token: the same running "Thinking" line as reasoning (chat-demo). */
+const THINKING = (
+  <Trace>
+    <Reasoning text="" running />
+  </Trace>
+);
+
 function Pending() {
   return (
     <MessageScrollerItem messageId="pending">
       <Message>
-        <MessageContent>
-          <Trace>
-            <Reasoning text="" running />
-          </Trace>
-        </MessageContent>
+        <MessageContent>{THINKING}</MessageContent>
       </Message>
     </MessageScrollerItem>
   );

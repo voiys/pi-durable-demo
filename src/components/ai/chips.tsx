@@ -14,8 +14,10 @@ export function Chip({ kind, label, to }: { kind: "agent" | "chat"; label: strin
   const Icon = kind === "agent" ? BotIcon : MessagesSquareIcon;
   const content = (
     <>
-      <Icon />
-      <span className="truncate">{label}</span>
+      <Icon className="shrink-0" />
+      <span className="truncate" title={label}>
+        {label}
+      </span>
     </>
   );
   return (
