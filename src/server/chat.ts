@@ -9,6 +9,7 @@ import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env.ts";
 import { PiSessionSockets } from "../pi/sockets.ts";
+import { agentExtensions, lastOf, sessionAgents, type AgentHost } from "./agents.ts";
 import { oauth } from "./siwc.ts";
 import type { IndexRow, ModelOption } from "../shared.ts";
 
@@ -54,6 +55,9 @@ export class Chat extends DurableObject<Env> {
         sections: [{ key: "preamble", render: () => PREAMBLE, tag: false }],
         hooks: [hook(GenerationTask, { onYield: () => void this.ctx.waitUntil(this.syncIndex()) })],
       });
+      const { MainTools, PeerTools } = agentExtensions(this.#agentHost);
+      this.registry.install(MainTools);
+      this.registry.install(PeerTools);
       const models = createModels({ credentials: this.#credentials });
       const base = openaiProvider();
       models.setProvider({ ...base, auth: { oauth: oauth((c) => this.#user().refreshCredential(c)) } });
@@ -62,6 +66,16 @@ export class Chat extends DurableObject<Env> {
     defaults: { model: MODEL, thinkingLevel: "low" },
   });
 
+  // Declared after `harness`; the harness factory only reads it once pi opens.
+  readonly #agentHost: AgentHost = {
+    harness: this.harness,
+    chatId: this.chatId,
+    sessions: async () => (await this.#user().listChats()).map((c) => ({ id: c.id, title: c.title })),
+    sendToSession: (chatId, from, message) => this.env.Chat.getByName(`${this.userId}--${chatId}`).receive(from, message),
+    lastOfSession: (chatId) => this.env.Chat.getByName(`${this.userId}--${chatId}`).lastAnswer(),
+    agentsChanged: async () =>
+      this.#user().setAgents(this.chatId, (await sessionAgents(this.#agentHost)).filter((a) => a.name !== "main").map(({ name, session }) => ({ name, session }))),
+  };
   readonly sockets = new PiSessionSockets(this.harness, this.registry, (tag) => this.ctx.getWebSockets(tag), () => this.syncIndex());
   readonly webSockets = new WebSockets(this.sockets.options());
   readonly lifecycle = Lifecycle.install(this).use(this.webSockets).use(this.harness);
@@ -91,6 +105,17 @@ export class Chat extends DurableObject<Env> {
     if (!level) throw new Error(`${id} has no thinking level "${thinkingLevel}"`);
     const conversation = await this.harness.conversation(ROOT_SESSION);
     await conversation.configure({ model: { provider: MODEL.provider, modelId: id }, thinkingLevel: level }, BACKGROUND_CONTEXT);
+  }
+
+  /** Another session of the same user messages this session's main agent (v1 `sessions` tool). */
+  async receive(fromChatId: string, message: string) {
+    const from = (await this.#user().listChats()).find((c) => c.id === fromChatId);
+    if (!from) throw new Error(`Unknown session ${fromChatId}`);
+    await this.harness.session().submit(`[message from session "${from.title}" (${from.id})] ${message}`, { whenBusy: "followUp" });
+  }
+
+  async lastAnswer() {
+    return (await lastOf(this.harness, ROOT_SESSION)).text;
   }
 
   /** Pushes user/assistant entries not yet pushed to the User DO's search index. */

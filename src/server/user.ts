@@ -17,20 +17,42 @@ export class User extends Agent<Env, UserState> {
 
   onStart() {
     this.sql`CREATE TABLE IF NOT EXISTS chats (id TEXT PRIMARY KEY, title TEXT NOT NULL, updated_at INTEGER NOT NULL)`;
+    this.sql`CREATE TABLE IF NOT EXISTS chat_agents (chat_id TEXT NOT NULL, name TEXT NOT NULL, session TEXT NOT NULL, PRIMARY KEY (chat_id, name))`;
     this.sql`CREATE TABLE IF NOT EXISTS indexed (chat_id TEXT NOT NULL, entry_id TEXT NOT NULL, PRIMARY KEY (chat_id, entry_id))`;
     this.sql`CREATE VIRTUAL TABLE IF NOT EXISTS messages USING fts5(text, chat_id UNINDEXED, entry_id UNINDEXED, role UNINDEXED, tokenize = 'porter unicode61')`;
   }
 
   #publish() {
     const chats = this.sql<{ id: string; title: string; updated_at: number }>`SELECT * FROM chats ORDER BY updated_at DESC`;
-    this.setState({ ...this.state, chats: chats.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updated_at })) });
+    const agents = this.sql<{ chat_id: string; name: string; session: string }>`SELECT * FROM chat_agents ORDER BY rowid`;
+    this.setState({
+      ...this.state,
+      chats: chats.map((c) => ({
+        id: c.id,
+        title: c.title,
+        updatedAt: c.updated_at,
+        agents: agents.filter((a) => a.chat_id === c.id).map(({ name, session }) => ({ name, session })),
+      })),
+    });
   }
 
   createChat(): ChatSummary {
-    const chat = { id: crypto.randomUUID(), title: "New chat", updatedAt: Date.now() };
+    const chat = { id: crypto.randomUUID(), title: "New chat", updatedAt: Date.now(), agents: [] };
     this.sql`INSERT INTO chats (id, title, updated_at) VALUES (${chat.id}, ${chat.title}, ${chat.updatedAt})`;
     this.#publish();
     return chat;
+  }
+
+  listChats(): ChatSummary[] {
+    return this.state.chats;
+  }
+
+  /** A Chat DO reports its subagents (v1) so the sidebar can list them under the chat. */
+  setAgents(chatId: string, agents: { name: string; session: string }[]) {
+    if (!this.hasChat(chatId)) throw new Error(`Unknown chat ${chatId}`);
+    this.sql`DELETE FROM chat_agents WHERE chat_id = ${chatId}`;
+    for (const a of agents) this.sql`INSERT INTO chat_agents (chat_id, name, session) VALUES (${chatId}, ${a.name}, ${a.session})`;
+    this.#publish();
   }
 
   hasChat(chatId: string) {

@@ -1,6 +1,6 @@
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 // Types and helpers shared by the browser and the Durable Objects (no server imports here).
-export type ChatSummary = { id: string; title: string; updatedAt: number };
+export type ChatSummary = { id: string; title: string; updatedAt: number; agents: { name: string; session: string }[] };
 export type SearchHit = { chatId: string; entryId: string; role: string; snippet: string; title: string };
 export type UserState = { chats: ChatSummary[]; chatgpt: { email: string } | null };
 export type IndexRow = { entryId: string; role: "user" | "assistant"; text: string };
