@@ -51,7 +51,7 @@ function ErrorMessage({ children }: { children: ReactNode }) {
   );
 }
 
-export function Row({ turn, ctx, highlight, enter, reduceMotion }: { turn: PiTurn; ctx: ToolContext; highlight: boolean; enter: boolean; reduceMotion: boolean }) {
+function Row({ turn, ctx, highlight, enter, reduceMotion }: { turn: PiTurn; ctx: ToolContext; highlight: boolean; enter: boolean; reduceMotion: boolean }) {
   const text = turn.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join(turn.role === "user" ? "\n" : "\n\n");
   const agent = turn.role === "user" ? parseAgentMessage(text) : undefined;
   const human = turn.role === "user" && !agent;
