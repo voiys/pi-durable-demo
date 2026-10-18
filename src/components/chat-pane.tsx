@@ -1,5 +1,5 @@
 import { ArrowUp, Square } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Markdown, TraceGroup, type ToolResult } from "@/components/ai/parts";
 import { ModelPicker } from "@/components/model-picker";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/message-scroller";
 import type { PiMessage, PiMessagePart } from "@/pi/transcript";
 import { usePiSession } from "@/pi/use-pi-session";
+import { cn } from "@/lib/utils";
 import { chatObjectName } from "@/shared";
 
 // Inter-agent messages arrive as user messages with a bracketed prefix.
@@ -43,7 +44,7 @@ function groupParts(parts: readonly PiMessagePart[]) {
   return groups;
 }
 
-function Row({ message, results }: { message: PiMessage; results: Map<string, ToolResult> }) {
+function Row({ message, results, highlight }: { message: PiMessage; results: Map<string, ToolResult>; highlight: boolean }) {
   if (message.role !== "user" && message.role !== "assistant") return null;
   const live = message.id === "live";
   let content;
@@ -77,15 +78,20 @@ function Row({ message, results }: { message: PiMessage; results: Map<string, To
   }
   return (
     <MessageScrollerItem messageId={message.id} scrollAnchor={message.role === "user"}>
-      <Message id={`entry-${message.id}`} align={align}>
+      <Message id={`entry-${message.id}`} align={align} className={cn(highlight && "rounded-lg ring-2 ring-yellow-300 ring-offset-4 ring-offset-background")}>
         <MessageContent>{content}</MessageContent>
       </Message>
     </MessageScrollerItem>
   );
 }
 
-export function ChatPane({ userId, chatId, session: sessionId }: { userId: string; chatId: string; session?: string }) {
+export function ChatPane({ userId, chatId, session: sessionId, entry }: { userId: string; chatId: string; session?: string; entry?: string }) {
   const session = usePiSession(chatObjectName(userId, chatId), sessionId);
+  // A search hit opens the chat at its message, once the transcript snapshot has it.
+  const hasEntry = session.messages.some((m) => m.id === entry);
+  useEffect(() => {
+    if (hasEntry) document.getElementById(`entry-${entry}`)!.scrollIntoView({ block: "center" });
+  }, [entry, hasEntry]);
   const [draft, setDraft] = useState("");
   const results = new Map<string, ToolResult>();
   for (const m of session.messages)
@@ -103,9 +109,9 @@ export function ChatPane({ userId, chatId, session: sessionId }: { userId: strin
           <MessageScrollerViewport>
             <MessageScrollerContent className="mx-auto w-full max-w-3xl p-4">
               {session.messages.map((m) => (
-                <Row key={m.id} message={m} results={results} />
+                <Row key={m.id} message={m} results={results} highlight={m.id === entry} />
               ))}
-              {session.live && <Row message={session.live} results={results} />}
+              {session.live && <Row message={session.live} results={results} highlight={false} />}
               {session.error && <p className="text-destructive text-sm">{session.error}</p>}
             </MessageScrollerContent>
           </MessageScrollerViewport>

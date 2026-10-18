@@ -1,11 +1,11 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { Bot, MessageSquarePlus, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { ChatPane } from "@/components/chat-pane";
 import { NavUser } from "@/components/nav-user";
-import { SearchDialog } from "@/components/search-dialog";
+import { Snippet } from "@/components/search-hits";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -13,6 +13,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarHeader,
+  SidebarInput,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
@@ -23,8 +24,8 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { createChat, getSession } from "@/server/fns";
-import type { UserState } from "@/shared";
+import { createChat, getSession, searchMessages } from "@/server/fns";
+import type { SearchHit, UserState } from "@/shared";
 
 export const Route = createFileRoute("/")({
   validateSearch: z.object({ chat: z.string().optional(), entry: z.string().optional(), agent: z.string().optional() }),
@@ -38,12 +39,23 @@ export const Route = createFileRoute("/")({
 
 function App() {
   const { user } = Route.useRouteContext();
-  const { chat, agent } = Route.useSearch();
+  const { chat, agent, entry } = Route.useSearch();
   const navigate = useNavigate({ from: "/" });
-  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  useEffect(() => {
+    if (!query.trim()) return setHits([]);
+    const t = setTimeout(async () => setHits(await searchMessages({ data: query })), 150);
+    return () => clearTimeout(t);
+  }, [query]);
   const userAgent = useAgent<UserState>({ agent: "user", name: user.id });
   const state = userAgent.state;
   const current = state?.chats.find((c) => c.id === chat);
+  // While searching, show only chats with a message hit (bm25 order) or a matching title.
+  const needle = query.trim().toLowerCase();
+  const chats = needle
+    ? (state?.chats ?? []).filter((c) => hits.some((h) => h.chatId === c.id) || c.title.toLowerCase().includes(needle))
+    : (state?.chats ?? []);
   const title = current
     ? [current.title, agent && current.agents.find((a) => a.session === agent)?.name].filter(Boolean).join(" / ")
     : "pi durable";
@@ -55,18 +67,40 @@ function App() {
           <Button onClick={async () => navigate({ search: { chat: (await createChat()).id } })} disabled={!state?.chatgpt}>
             <MessageSquarePlus /> New chat
           </Button>
-          <Button variant="outline" onClick={() => setSearching(true)}>
-            <Search /> Search messages
-          </Button>
+          <div className="relative">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2" />
+            <SidebarInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search chats and messages" className="pl-8" />
+          </div>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
             <SidebarMenu>
-              {state?.chats.map((c) => (
+              {needle && chats.length === 0 && <p className="text-muted-foreground px-2 text-sm">No matches.</p>}
+              {chats.map((c) => (
                 <SidebarMenuItem key={c.id}>
                   <SidebarMenuButton isActive={c.id === chat && !agent} onClick={() => navigate({ search: { chat: c.id } })}>
                     <span className="truncate">{c.title}</span>
                   </SidebarMenuButton>
+                  {needle && hits.some((h) => h.chatId === c.id) && (
+                    <SidebarMenuSub>
+                      {hits
+                        .filter((h) => h.chatId === c.id)
+                        .map((h) => (
+                          <SidebarMenuSubItem key={h.entryId}>
+                            <SidebarMenuSubButton
+                              size="sm"
+                              className="h-auto py-1"
+                              isActive={c.id === chat && h.entryId === entry}
+                              onClick={() => navigate({ search: { chat: c.id, entry: h.entryId } })}
+                            >
+                              <span className="text-muted-foreground line-clamp-2 text-xs">
+                                <Snippet text={h.snippet} />
+                              </span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                    </SidebarMenuSub>
+                  )}
                   {c.agents.length > 0 && (
                     <SidebarMenuSub>
                       {c.agents.map((a) => (
@@ -97,14 +131,13 @@ function App() {
           <span className="truncate text-sm font-medium">{title}</span>
         </header>
         {chat ? (
-          <ChatPane key={`${chat}:${agent ?? "main"}`} userId={user.id} chatId={chat} session={agent} />
+          <ChatPane key={`${chat}:${agent ?? "main"}`} userId={user.id} chatId={chat} session={agent} entry={entry} />
         ) : (
           <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
             {state?.chatgpt ? "Pick a chat or start a new one." : "Connect your ChatGPT plan to start chatting."}
           </div>
         )}
       </SidebarInset>
-      <SearchDialog open={searching} onOpenChange={setSearching} />
     </SidebarProvider>
   );
 }

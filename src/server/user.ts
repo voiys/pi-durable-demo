@@ -80,7 +80,7 @@ export class User extends Agent<Env, UserState> {
     const match = terms.map((t) => `"${t.replaceAll('"', '""')}"`).join(" ");
     return this.sql<SearchHit>`
       SELECT m.chat_id AS chatId, m.entry_id AS entryId, m.role AS role, c.title AS title,
-             snippet(messages, 0, '[', ']', '…', 12) AS snippet
+             snippet(messages, 0, char(2), char(3), '…', 12) AS snippet
       FROM messages m JOIN chats c ON c.id = m.chat_id
       WHERE messages MATCH ${match}
       ORDER BY bm25(messages) LIMIT 20`;
