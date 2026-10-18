@@ -27,7 +27,7 @@ flowchart LR
   Chat -->|"lastAnswer, receive"| Chat
   Chat -->|"availableModels, credential, indexMessages, listChats, memoryDate, memoryLog, memorySearch, memoryView, memoryZoom, refreshCredential, setAgents"| User
   Fns -->|"availableModels, beginConnect, createChat, deleteChat, disconnect, hasChat, memoryStats, renameChat, search, setDebug"| User
-  Fns -->|"configureModel"| Chat
+  Fns -->|"configureModel, retireSubagent"| Chat
   User -->|"wipe"| Chat
   Gate -->|"hasChat"| User
 ```
@@ -67,8 +67,8 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | User | `messages_config`, `messages_content`, `messages_data`, `messages_docsize`, `messages_idx` | library: FTS5 shadow tables of `messages` | user | FTS5 shadow tables of `messages` | FTS5 shadow tables of `messages` | yes |
 | User | `cf_agent_tool_runs`, `cf_agents_facet_runs`, `cf_agents_fibers`, `cf_agents_jobs`, `cf_agents_mcp_servers`, `cf_agents_runs`, `cf_agents_state`, `cf_agents_task_runs`, `cf_agents_task_steps`, `cf_agents_workflows` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | User | `_cf_KV` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
-| Chat | kv `index:sent` | code: server/chat.ts:137 | chat | server/chat.ts:145 | server/chat.ts:137 | n/a |
-| Chat | kv `optchat:logged` | code: server/chat.ts:129 | chat | server/chat.ts:132 | server/chat.ts:129 | n/a |
+| Chat | kv `index:sent` | code: server/chat.ts:141 | chat | server/chat.ts:149 | server/chat.ts:141 | n/a |
+| Chat | kv `optchat:logged` | code: server/chat.ts:133 | chat | server/chat.ts:136 | server/chat.ts:133 | n/a |
 | Chat | `cf_agents_jobs` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | Chat | `pi_conversations`, `pi_document_revisions`, `pi_documents`, `pi_durable_metadata`, `pi_durable_schema`, `pi_entries`, `pi_record_ids`, `pi_submissions`, `pi_tasks` | library: pi-durable (PiHarness) | chat | pi-durable (PiHarness) | pi-durable (PiHarness) | yes |
 | Chat | `_cf_KV`, `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
@@ -81,24 +81,25 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | Chat | Chat | `receive` | src/server/chat.ts:73 |
 | Chat | User | `availableModels` | src/server/chat.ts:96 |
 | Chat | User | `credential` | src/server/chat.ts:62 |
-| Chat | User | `indexMessages` | src/server/chat.ts:144 |
+| Chat | User | `indexMessages` | src/server/chat.ts:148 |
 | Chat | User | `listChats` | src/server/chat.ts:72, src/server/chat.ts:110 |
 | Chat | User | `memoryDate` | src/server/chat.ts:39 |
-| Chat | User | `memoryLog` | src/server/chat.ts:131 |
+| Chat | User | `memoryLog` | src/server/chat.ts:135 |
 | Chat | User | `memorySearch` | src/server/chat.ts:40 |
 | Chat | User | `memoryView` | src/server/chat.ts:37 |
 | Chat | User | `memoryZoom` | src/server/chat.ts:38 |
 | Chat | User | `refreshCredential` | src/server/chat.ts:62 |
 | Chat | User | `setAgents` | src/server/chat.ts:77 |
-| Server fns | Chat | `configureModel` | src/server/fns.ts:40 |
-| Server fns | User | `availableModels` | src/server/fns.ts:36 |
+| Server fns | Chat | `configureModel` | src/server/fns.ts:43 |
+| Server fns | Chat | `retireSubagent` | src/server/fns.ts:30 |
+| Server fns | User | `availableModels` | src/server/fns.ts:39 |
 | Server fns | User | `beginConnect` | src/server/fns.ts:19 |
 | Server fns | User | `createChat` | src/server/fns.ts:18 |
-| Server fns | User | `deleteChat` | src/server/fns.ts:33 |
+| Server fns | User | `deleteChat` | src/server/fns.ts:36 |
 | Server fns | User | `disconnect` | src/server/fns.ts:20 |
 | Server fns | User | `hasChat` | src/server/fns.ts:12 |
 | Server fns | User | `memoryStats` | src/server/fns.ts:27 |
-| Server fns | User | `renameChat` | src/server/fns.ts:30 |
+| Server fns | User | `renameChat` | src/server/fns.ts:33 |
 | Server fns | User | `search` | src/server/fns.ts:23 |
 | Server fns | User | `setDebug` | src/server/fns.ts:26 |
 | User | Chat | `wipe` | src/server/user.ts:90 |
@@ -123,6 +124,7 @@ Scope: `user`/`chat` = per User/Chat instance, `shared` = D1, `agent` = agents S
 | `serverFn searchMessages (GET)` | `requireUser` |
 | `serverFn setDebug (POST)` | `requireUser` |
 | `serverFn memoryStats (GET)` | `requireUser` |
+| `serverFn retireSubagent (POST)` | `requireUser` + `User.hasChat` |
 | `serverFn renameChat (POST)` | `requireUser` + `User.hasChat` |
 | `serverFn deleteChat (POST)` | `requireUser` + `User.hasChat` |
 | `serverFn modelOptions (GET)` | `requireUser` |

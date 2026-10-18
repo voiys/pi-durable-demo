@@ -6,6 +6,7 @@ import { z } from "zod";
 import { ChatPane, DraftPane } from "@/components/chat-pane";
 import { ChatRow } from "@/components/chat-row";
 import { DebugSection } from "@/components/debug-section";
+import { SubagentRow } from "@/components/subagent-row";
 import { NavUser } from "@/components/nav-user";
 import { ChatHits } from "@/components/search-hits";
 import { Button } from "@/components/ui/button";
@@ -91,15 +92,14 @@ function App() {
                   {c.agents.length > 0 && (
                     <SidebarMenuSub>
                       {c.agents.map((a) => (
-                        <SidebarMenuSubItem key={a.session}>
-                          <SidebarMenuSubButton
-                            isActive={c.id === chat && a.session === agent}
-                            onClick={() => navigate({ search: { chat: c.id, agent: a.session } })}
-                          >
-                            <Bot />
-                            <span className="truncate">{a.name}</span>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
+                        <SubagentRow
+                          key={a.session}
+                          chatId={c.id}
+                          name={a.name}
+                          active={c.id === chat && a.session === agent}
+                          onOpen={() => navigate({ search: { chat: c.id, agent: a.session } })}
+                          onRetired={() => a.session === agent && navigate({ search: { chat: c.id } })}
+                        />
                       ))}
                     </SidebarMenuSub>
                   )}

@@ -102,6 +102,19 @@ export async function sessionAgents(host: AgentHost): Promise<AgentInfo[]> {
   return Promise.all(members.map(async ([name, id]) => ({ name, session: String(id), busy: await host.harness.session(String(id)).busy() })));
 }
 
+/** Stops a subagent and removes it from the session (UI action; the `subagent` tool's retire does the same from a turn).
+ * Its transcript stays in storage, but nothing lists or reaches it any more. */
+export async function retireSubagent(host: AgentHost, name: string) {
+  const pi = await host.harness.pi();
+  const root = (await pi.conversation(ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT))!;
+  const doc = await pi.snapshot(Subagents, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT);
+  const agent = doc?.agents[name];
+  if (!agent) throw new Error(`No subagent named ${name}`);
+  await (await pi.conversation(agent.conversationId, BACKGROUND_CONTEXT))!.abort(BACKGROUND_CONTEXT);
+  await root.commit(async (tx) => void delete (await tx.doc(Subagents, ROOT_CONVERSATION_ID)).agents[name], BACKGROUND_CONTEXT);
+  await host.agentsChanged();
+}
+
 /** Last assistant text of a conversation, and its last tool call (for `inspect`). */
 export async function lastOf(harness: PiHarness, session: string) {
   const entries: EntryRecord[] = await harness.session(session).messages();
@@ -159,9 +172,10 @@ export function agentExtensions(host: AgentHost) {
     name: "subagent",
     description:
       "Manage background subagents of this session. Actions: spawn (name, message), send (name, message; followUp: true " +
-      "queues it after the current answer instead of steering), stop (name). Their answers are reported back to you.",
+      "queues it after the current answer instead of steering), stop (name: aborts its current work), retire (name: stops it " +
+      "and removes it from the session for good). Their answers are reported back to you.",
     parameters: Type.Object({
-      action: Type.Union([Type.Literal("spawn"), Type.Literal("send"), Type.Literal("stop")]),
+      action: Type.Union([Type.Literal("spawn"), Type.Literal("send"), Type.Literal("stop"), Type.Literal("retire")]),
       name: Type.String(),
       message: Type.Optional(Type.String()),
       followUp: Type.Optional(Type.Boolean()),
@@ -171,9 +185,12 @@ export function agentExtensions(host: AgentHost) {
       const registry = (await api.snapshot(Subagents, api.conversationId, ctx)) ?? { agents: {}, reporters: {} };
       const agent = Object.hasOwn(registry.agents, name) ? registry.agents[name] : undefined;
       if (action !== "spawn" && !agent) return { ...say(`No subagent named ${name}.`), isError: true };
-      if (action === "stop") {
+      if (action === "stop" || action === "retire") {
         await (await api.conversation(agent!.conversationId, ctx))!.abort(ctx);
-        return say(`Stopped ${name}.`);
+        if (action === "stop") return say(`Stopped ${name}.`);
+        await api.commit(async (tx) => void delete (await tx.doc(Subagents, api.conversationId)).agents[name], ctx);
+        await host.agentsChanged();
+        return say(`Retired ${name}.`);
       }
       if (!message) return { ...say(`${action} needs a message.`), isError: true };
       const result = await api.commit(async (tx) => {

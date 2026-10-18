@@ -25,6 +25,9 @@ export const setDebug = createServerFn({ method: "POST" })
   .validator((d: { viewBytes: number }) => d)
   .handler(async ({ data }) => (await user()).setDebug(data));
 export const memoryStats = createServerFn({ method: "GET" }).handler(async (): Promise<MemoryStats> => ({ ...(await (await user()).memoryStats()) }));
+export const retireSubagent = createServerFn({ method: "POST" })
+  .validator((d: { chatId: string; name: string }) => d)
+  .handler(async ({ data }) => (await chat(data.chatId)).retireSubagent(data.name));
 export const renameChat = createServerFn({ method: "POST" })
   .validator((d: { chatId: string; title: string }) => d)
   .handler(async ({ data }) => env.User.getByName(await owner(data.chatId)).renameChat(data.chatId, data.title));

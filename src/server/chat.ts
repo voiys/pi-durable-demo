@@ -6,7 +6,7 @@ import { Lifecycle } from "agents/lifecycle";
 import { WebSockets } from "agents/websockets";
 import type { Env } from "../env.ts";
 import { PiSessionSockets } from "../pi/sockets.ts";
-import { agentExtensions, lastOf, sessionAgents, type AgentHost } from "./agents.ts";
+import { agentExtensions, lastOf, retireSubagent, sessionAgents, type AgentHost } from "./agents.ts";
 import { logRows, optchatExtension } from "../optchat/extension.ts";
 import { MODEL, pickerOptions, planModels } from "./models.ts";
 import { DEFAULT_MODEL, type IndexRow, type ModelOption } from "../shared.ts";
@@ -110,6 +110,10 @@ export class Chat extends DurableObject<Env> {
     const from = (await this.#user().listChats()).find((c) => c.id === fromChatId);
     if (!from) throw new Error(`Unknown session ${fromChatId}`);
     await this.harness.session().submit(`[message from session "${from.title}" (${from.id})] ${message}`, { whenBusy: "followUp" });
+  }
+
+  retireSubagent(name: string) {
+    return retireSubagent(this.#agentHost, name);
   }
 
   async lastAnswer() {
