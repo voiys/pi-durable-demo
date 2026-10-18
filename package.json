@@ -5,7 +5,8 @@
   "packageManager": "pnpm@12.6.0",
   "scripts": {
     "dev": "alchemy dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:optchat-upstream": "node --experimental-transform-types --no-warnings scripts/optchat-upstream.ts"
   },
   "dependencies": {
     "@alchemy.run/frontend-frameworks": "2.0.0-beta.83",
@@ -46,6 +47,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "tailwindcss": "4.3.3",
+    "tsx": "4.20.6",
     "typescript": "6.0.3"
   }
 }

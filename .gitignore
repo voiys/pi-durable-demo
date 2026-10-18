@@ -3,3 +3,4 @@ node_modules/
 .env
 .env.*
 .alchemy-dev.log
+tests/optchat/test/.memory.selected.test.ts
