@@ -9,14 +9,16 @@ export { User } from "./server/user.ts";
 /**
  * Every agent socket/request is resolved to the better-auth user first.
  * `/agents/user/<name>` must be the caller's own id, `/agents/chat/<name>` must
- * start with `<id>--`, so one user can never reach another user's objects.
+ * be `<id>--<chatId>` for a chat in the caller's catalog, so one user can never reach another user's objects.
  */
 async function routeAgent(request: Request, env: Env): Promise<Response> {
   const session = await auth().api.getSession({ headers: request.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
   const [, , kind, name] = new URL(request.url).pathname.split("/");
   const id = session.user.id;
-  const allowed = (kind === "user" && name === id) || (kind === "chat" && name?.startsWith(`${id}--`));
+  const chatId = kind === "chat" && name?.startsWith(`${id}--`) ? name.slice(id.length + 2) : undefined;
+  // A chat must also be in the caller's own catalog, so nobody can mint Chat objects outside it.
+  const allowed = (kind === "user" && name === id) || (chatId !== undefined && (await env.User.getByName(id).hasChat(chatId)));
   if (!allowed) return new Response("Forbidden", { status: 403 });
   const response = await routeAgentRequest(request, env);
   if (!response) throw new Error(`routeAgentRequest did not route ${request.url}`);

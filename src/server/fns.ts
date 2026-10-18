@@ -5,7 +5,11 @@ import { chatObjectName } from "../shared.ts";
 import { auth, requireUser } from "./auth.ts";
 
 const user = async () => env.User.getByName((await requireUser(getRequestHeaders())).id);
-const chat = async (chatId: string) => env.Chat.getByName(chatObjectName((await requireUser(getRequestHeaders())).id, chatId));
+const chat = async (chatId: string) => {
+  const { id } = await requireUser(getRequestHeaders());
+  if (!(await env.User.getByName(id).hasChat(chatId))) throw new Response("Forbidden", { status: 403 });
+  return env.Chat.getByName(chatObjectName(id, chatId));
+};
 
 export const getSession = createServerFn({ method: "GET" }).handler(() => auth().api.getSession({ headers: getRequestHeaders() }));
 export const createChat = createServerFn({ method: "POST" })

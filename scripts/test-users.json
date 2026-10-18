@@ -1,0 +1,5 @@
+{
+  "origin": "http://127.0.0.1:1455",
+  "a": { "email": "a@test.dev", "password": "password-a1" },
+  "b": { "email": "b@test.dev", "password": "password-b1" }
+}
