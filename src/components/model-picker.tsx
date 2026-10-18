@@ -1,10 +1,11 @@
 import { Brain, Check } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { InputGroupButton } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { StepSlider } from "@/components/step-slider";
-import { cn } from "@/lib/utils";
+import { cn, fail } from "@/lib/utils";
 import { modelOptions } from "@/server/fns";
 import type { ModelOption } from "@/shared";
 
@@ -18,39 +19,47 @@ export function ModelPicker({ model, thinkingLevel, onChange }: { model: string 
   const [options, setOptions] = useState<ModelOption[]>(cached ?? []);
   useEffect(() => {
     loading ??= modelOptions().then((list) => (cached = list));
-    loading.then(setOptions, (e: Error) => ((loading = undefined), toast.error("Couldn't load models", { description: e.message })));
+    loading.then(setOptions, (e: Error) => ((loading = undefined), fail("load models")(e)));
   }, []);
   const current = options.find((o) => o.id === model);
   const levels = current?.levels ?? [];
   const label = `${current?.name ?? model ?? "Model"} · ${thinkingLevel ?? "-"}`;
   const change = (next: string, level: string) =>
-    onChange(next, level).catch((e: Error) => toast.error("Couldn't change model", { description: e.message }));
+    onChange(next, level).catch(fail("change model"));
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <InputGroupButton variant="ghost" size="icon-xs" aria-label={`Model and reasoning: ${label}`} title={label}>
-          <Brain />
-        </InputGroupButton>
-      </PopoverTrigger>
-      <PopoverContent align="start" side="top" className="w-64 p-1">
-        <div role="radiogroup" aria-label="Model" className="grid">
-          {options.map((o) => (
-            <button
-              key={o.id}
-              role="radio"
-              aria-checked={o.id === model}
-              className="hover:bg-accent flex h-8 items-center gap-2 rounded-sm px-2 text-left text-sm"
-              // Keep the effort when the new model supports it, else take the new model's lowest level.
-              onClick={() => change(o.id, o.levels.find((l) => l === thinkingLevel) ?? o.levels[0])}
-            >
-              <span className="flex-1 truncate">{o.name}</span>
-              <Check className={cn("size-4", o.id !== model && "invisible")} />
-            </button>
-          ))}
-        </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <InputGroupButton variant="ghost" size="icon-sm" aria-label={`Model and reasoning: ${label}`}>
+              <Brain />
+            </InputGroupButton>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <PopoverContent align="start" side="top" className="w-64 p-0">
+        <Command>
+          <CommandList>
+            <CommandGroup heading="Model">
+              {options.map((o) => (
+                <CommandItem
+                  key={o.id}
+                  value={o.id}
+                  // Keep the effort when the new model supports it, else take the new model's lowest level.
+                  onSelect={() => change(o.id, o.levels.find((l) => l === thinkingLevel) ?? o.levels[0])}
+                >
+                  <span className="flex-1 truncate">{o.name}</span>
+                  <Check className={cn("size-4", o.id !== model && "invisible")} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+        {/* Outside the Command: a listbox may only hold options. */}
         {levels.length > 1 && (
-          <div className="border-t px-2 pt-3 pb-2">
+          <div className="border-t p-3">
             <StepSlider label="Reasoning" steps={levels} value={levels.findIndex((l) => l === thinkingLevel)} onCommit={(i) => change(model!, levels[i])} ticks />
           </div>
         )}

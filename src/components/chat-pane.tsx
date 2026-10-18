@@ -1,11 +1,15 @@
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, MessageCircleDashedIcon, Square } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
-import { Markdown, TraceGroup, type ToolResult } from "@/components/ai/parts";
+import { AgentMessage, parseAgentMessage } from "@/components/ai/agents-message";
+import { Markdown } from "@/components/ai/markdown";
+import { Reasoning, TraceGroup, type ToolContext, type ToolResult } from "@/components/ai/parts";
 import { ModelPicker } from "@/components/model-picker";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { CodeBlockCopyButton } from "@/components/ui/code-block";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
-import { Message, MessageContent, MessageHeader } from "@/components/ui/message";
+import { Message, MessageContent, MessageFooter } from "@/components/ui/message";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -13,27 +17,16 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
 } from "@/components/ui/message-scroller";
-import type { PiMessage, PiMessagePart } from "@/pi/transcript";
+import { Trace } from "@/components/ui/trace";
+import type { PiMessagePart } from "@/pi/transcript";
 import { usePiSession } from "@/pi/use-pi-session";
-import { SLIDE_UP } from "@/lib/message-animations";
+import { toTurns, type PiTurn } from "@/pi/view";
+import { FADE, SLIDE_UP } from "@/lib/message-animations";
 import { cn } from "@/lib/utils";
 import { createChat, setChatModel } from "@/server/fns";
-import { chatObjectName, DEFAULT_MODEL } from "@/shared";
-
-// Inter-agent messages arrive as user messages with a bracketed prefix.
-const AGENT_PREFIXES = [
-  /^\[(message from [^\]]+)\] ([\s\S]*)$/,
-  /^\[(subagent \S+) answered, no reply needed\] ([\s\S]*)$/,
-  /^\[(subagent \S+) failed: [\s\S]*\]$/,
-];
-
-function agentMessage(text: string) {
-  for (const re of AGENT_PREFIXES) {
-    const m = re.exec(text);
-    if (m) return { from: m[1], body: m[2] ?? text };
-  }
-}
+import { chatObjectName, DEFAULT_MODEL, type ChatSummary } from "@/shared";
 
 /** Consecutive thinking/tool-call parts form one Trace; text parts are markdown. */
 function groupParts(parts: readonly PiMessagePart[]) {
@@ -49,51 +42,93 @@ function groupParts(parts: readonly PiMessagePart[]) {
 
 const MotionMessageScrollerItem = motion.create(MessageScrollerItem);
 
-function Row({ message, results, highlight, enter }: { message: PiMessage; results: Map<string, ToolResult>; highlight: boolean; enter: boolean }) {
-  if (message.role !== "user" && message.role !== "assistant") return null;
-  const live = message.id === "live";
-  let content;
-  let align: "start" | "end" = "start";
-  if (message.role === "user") {
-    const text = message.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join("\n");
-    const agent = agentMessage(text);
-    align = agent ? "start" : "end";
-    content = (
-      <>
-        {agent && <MessageHeader>{agent.from}</MessageHeader>}
-        <Bubble variant={agent ? "outline" : "muted"}>
-          <BubbleContent className="whitespace-pre-wrap">{agent?.body ?? text}</BubbleContent>
-        </Bubble>
-      </>
+/** An error in the thread (message-markdown's bubble, destructive variant). */
+function ErrorMessage({ children }: { children: ReactNode }) {
+  return (
+    <Bubble variant="destructive" role="alert">
+      <BubbleContent>{children}</BubbleContent>
+    </Bubble>
+  );
+}
+
+function Row({ turn, ctx, highlight, enter, reduceMotion }: { turn: PiTurn; ctx: ToolContext; highlight: boolean; enter: boolean; reduceMotion: boolean }) {
+  const text = turn.parts.flatMap((p) => (p.type === "text" ? [p.text] : [])).join(turn.role === "user" ? "\n" : "\n\n");
+  const agent = turn.role === "user" ? parseAgentMessage(text) : undefined;
+  const human = turn.role === "user" && !agent;
+  const content =
+    turn.role === "user" ? (
+      <Bubble align="end" variant="muted">
+        <BubbleContent className="whitespace-pre-wrap">{text}</BubbleContent>
+      </Bubble>
+    ) : (
+      groupParts(turn.parts).map((g, i, groups) =>
+        "text" in g ? (
+          <Bubble key={i} variant="ghost">
+            <BubbleContent>
+              <Markdown streaming={turn.live && i === groups.length - 1}>{g.text}</Markdown>
+            </BubbleContent>
+          </Bubble>
+        ) : (
+          <TraceGroup key={i} parts={g.trace} ctx={ctx} live={turn.live && i === groups.length - 1} />
+        ),
+      )
     );
-  } else {
-    const groups = groupParts(message.parts);
-    content = (
-      <>
-        {groups.map((g, i) =>
-          "text" in g ? (
-            <Markdown key={i} streaming={live && i === groups.length - 1}>{g.text}</Markdown>
-          ) : (
-            <TraceGroup key={i} parts={g.trace} results={results} live={live && i === groups.length - 1} />
-          ),
-        )}
-        {message.error && <p className="text-destructive text-xs">{message.error}</p>}
-      </>
-    );
-  }
   return (
     <MotionMessageScrollerItem
-      messageId={message.id}
-      scrollAnchor={message.role === "user"}
-      variants={SLIDE_UP}
-      initial={enter && message.role === "user" ? "initial" : false}
+      messageId={turn.ids[0]}
+      // Only the human's own messages anchor the scroll and slide in (chat-demo); agent messages arrive like replies.
+      scrollAnchor={human}
+      variants={reduceMotion ? FADE : SLIDE_UP}
+      initial={enter && human ? "initial" : false}
       animate="animate"
     >
-      <Message id={`entry-${message.id}`} align={align} className={cn(highlight && "rounded-lg ring-2 ring-yellow-300 ring-offset-4 ring-offset-background")}>
-        <MessageContent>{content}</MessageContent>
+      <Message
+        align={human ? "end" : "start"}
+        className={cn("rounded-lg ring-2 ring-offset-4 ring-offset-background transition-shadow duration-150", highlight ? "ring-ring/50" : "ring-transparent")}
+      >
+        {agent ? (
+          <AgentMessage msg={agent} chat={ctx.chat} />
+        ) : (
+          <MessageContent className={cn(turn.role === "assistant" && "max-w-2xl gap-3")}>
+            {content}
+            {turn.error && <ErrorMessage>{turn.error}</ErrorMessage>}
+            {!turn.live && text && (
+              <MessageFooter className="gap-2 opacity-0 transition-opacity duration-150 group-hover/message:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+                <time dateTime={new Date(turn.timestamp).toISOString()}>{new Date(turn.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time>
+                <CodeBlockCopyButton value={text} />
+              </MessageFooter>
+            )}
+          </MessageContent>
+        )}
       </Message>
     </MotionMessageScrollerItem>
   );
+}
+
+/** Between sending and pi's first token: the same running "Thinking" line as reasoning (chat-demo). */
+function Pending() {
+  return (
+    <MessageScrollerItem messageId="pending">
+      <Message>
+        <MessageContent>
+          <Trace>
+            <Reasoning text="" running />
+          </Trace>
+        </MessageContent>
+      </Message>
+    </MessageScrollerItem>
+  );
+}
+
+/** Opens the thread at a search hit (message-scroller-opening-position). */
+function ScrollToMessage({ id }: { id?: string }) {
+  const { scrollToMessage } = useMessageScroller();
+  useEffect(() => {
+    if (!id) return;
+    const frame = requestAnimationFrame(() => scrollToMessage(id, { align: "center", behavior: "auto" }));
+    return () => cancelAnimationFrame(frame);
+  }, [id, scrollToMessage]);
+  return null;
 }
 
 /** First messages of chats created by DraftPane, waiting for the new chat's socket. */
@@ -120,6 +155,7 @@ function Composer({ onSend, ready, running, onAbort, tools }: { onSend: (text: s
           value={draft}
           autoFocus
           placeholder={ready ? "Message pi…" : "Connecting…"}
+          aria-label="Message"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -136,7 +172,7 @@ function Composer({ onSend, ready, running, onAbort, tools }: { onSend: (text: s
               <Square />
             </InputGroupButton>
           ) : (
-            <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label="Send" disabled={!ready}>
+            <InputGroupButton type="submit" variant="default" size="icon-sm" aria-label="Send" disabled={!ready || !draft.trim()}>
               <ArrowUp />
             </InputGroupButton>
           )}
@@ -150,7 +186,16 @@ function Composer({ onSend, ready, running, onAbort, tools }: { onSend: (text: s
 export function DraftPane({ onCreated }: { onCreated: (chatId: string) => void }) {
   const [choice, setChoice] = useState<{ model: string; thinkingLevel: string }>({ model: DEFAULT_MODEL.id, thinkingLevel: DEFAULT_MODEL.thinkingLevel });
   return (
-    <div className="flex min-h-0 flex-1 flex-col justify-end">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <MessageCircleDashedIcon />
+          </EmptyMedia>
+          <EmptyTitle>What's on your mind?</EmptyTitle>
+          <EmptyDescription>Your first message starts the chat. Pick the model and reasoning with the brain button.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
       <Composer
         ready
         running={false}
@@ -169,13 +214,9 @@ export function DraftPane({ onCreated }: { onCreated: (chatId: string) => void }
   );
 }
 
-export function ChatPane({ userId, chatId, session: sessionId, entry }: { userId: string; chatId: string; session?: string; entry?: string }) {
+/** One chat's transcript (main agent, or subagent `session`) with its composer. `chats` are all the user's chats, for agent and chat chips. */
+export function ChatPane({ userId, chatId, session: sessionId, entry, chats }: { userId: string; chatId: string; session?: string; entry?: string; chats: ChatSummary[] }) {
   const session = usePiSession(chatObjectName(userId, chatId), sessionId);
-  // A search hit opens the chat at its message, once the transcript snapshot has it.
-  const hasEntry = session.messages.some((m) => m.id === entry);
-  useEffect(() => {
-    if (hasEntry) document.getElementById(`entry-${entry}`)!.scrollIntoView({ block: "center" });
-  }, [entry, hasEntry]);
   // A chat created by its first message (see DraftPane) sends that message once its socket opens.
   useEffect(() => {
     const first = firstMessages.get(chatId);
@@ -184,25 +225,44 @@ export function ChatPane({ userId, chatId, session: sessionId, entry }: { userId
     session.submit(first);
   }, [chatId, session.status, session.submit]);
   // History doesn't animate in; only messages sent after this pane opened do (pi timestamps them on commit).
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useReducedMotion() ?? false;
   const [openedAt] = useState(Date.now);
   const results = new Map<string, ToolResult>();
   for (const m of session.messages)
     for (const p of m.parts) if (p.type === "tool-result") results.set(p.id, p);
+  const ctx: ToolContext = { results, running: session.running, chat: chats.find((c) => c.id === chatId), chats };
+  const turns = toTurns([...session.messages, ...(session.live ? [session.live] : [])]);
+  // A search hit opens the chat at its message, once the transcript snapshot has it, and its highlight fades after a moment.
+  const hit = turns.find((t) => entry && t.ids.includes(entry));
+  const [cleared, setCleared] = useState<string>();
+  useEffect(() => {
+    if (!hit) return;
+    const timer = setTimeout(() => setCleared(entry), 1500);
+    return () => clearTimeout(timer);
+  }, [hit !== undefined, entry]);
+  // Keyed by role and position: the streamed reply keeps its row when pi commits it under its entry id.
+  const seen = { user: 0, assistant: 0 };
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <MessageScrollerProvider autoScroll>
         <MessageScroller>
           <MessageScrollerViewport>
-            <MessageScrollerContent className="mx-auto w-full max-w-3xl p-4">
-              {/* Keyed by position: the streamed reply keeps its row when pi commits it under its entry id. */}
-              {[...session.messages, ...(session.live ? [session.live] : [])].map((m, i) => (
-                <Row key={i} message={m} results={results} highlight={m.id === entry} enter={!reduceMotion && m.timestamp >= openedAt} />
+            <MessageScrollerContent aria-busy={session.running} className="mx-auto w-full max-w-3xl gap-6 px-4 pt-4 pb-8">
+              {turns.map((t) => (
+                <Row key={`${t.role}:${seen[t.role]++}`} turn={t} ctx={ctx} highlight={hit === t && entry !== cleared} enter={t.timestamp >= openedAt} reduceMotion={reduceMotion} />
               ))}
-              {session.error && <p className="text-destructive text-sm">{session.error}</p>}
+              {session.running && !session.live && turns.at(-1)?.role === "user" && <Pending />}
+              {session.error && (
+                <Message>
+                  <MessageContent>
+                    <ErrorMessage>{session.error}</ErrorMessage>
+                  </MessageContent>
+                </Message>
+              )}
             </MessageScrollerContent>
           </MessageScrollerViewport>
           <MessageScrollerButton />
+          <ScrollToMessage id={hit?.ids[0]} />
         </MessageScroller>
       </MessageScrollerProvider>
       <Composer

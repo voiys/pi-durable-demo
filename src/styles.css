@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "shadcn/tailwind.css";
 @source "../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
@@ -25,6 +26,7 @@
     --border: hsl(240 5.9% 90%);
     --input: hsl(240 5.9% 90%);
     --ring: hsl(240 5.9% 10%);
+    --highlight: hsl(50 98% 78% / 0.7);
 }
 
 .dark {
@@ -47,6 +49,7 @@
     --border: hsl(240 3.7% 15.9%);
     --input: hsl(240 3.7% 15.9%);
     --ring: hsl(240 4.9% 83.9%);
+    --highlight: hsl(45 93% 47% / 0.3);
 }
 
 @theme inline {
@@ -73,6 +76,7 @@
     --color-border: var(--border);
     --color-input: var(--input);
     --color-ring: var(--ring);
+    --color-highlight: var(--highlight);
     --color-sidebar: var(--sidebar);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar-primary: var(--sidebar-primary);
@@ -118,5 +122,12 @@
 
 @layer base {
     * { @apply border-border outline-ring/50; }
-    body { @apply bg-background text-foreground; }
+    body { @apply bg-background text-foreground overscroll-none; }
 }
+
+/* Sidebar icons track the label weight: 1.5px beside 400, 2px beside the font-medium active row. */
+[data-sidebar="menu-button"] > svg,
+[data-sidebar="menu-sub-button"] > svg,
+[data-sidebar="menu-action"] > svg { stroke-width: 1.5; }
+[data-sidebar="menu-button"][data-active="true"] > svg,
+[data-sidebar="menu-sub-button"][data-active="true"] > svg { stroke-width: 2; }
