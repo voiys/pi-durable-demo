@@ -28,6 +28,7 @@
 
 v1 after v0: agent-messaging pi tools (list / send / last message / inspect, sessions of the same user) + OptChat on top.
 
-## Next (after bots)
-1. Group chats: the user starts a room with a few bots; they collaborate in it (each bot posts as itself, @-addressed turns), the room is disbanded when done. The room keeps only its transcript; every member logs what it saw to its own memory. Needs: a Group DO (or rooms in the User DO), a turn-taking rule so bots don't loop, and room UI in the rail.
-2. Per-bot research store: a `sql` tool over the Bot DO's SQLite (findings + FTS5), shown in the details panel; AI Search per bot once there's a Cloudflare account (research/bot-storage.md).
+## Next
+1. Per-bot semantic lookup (embeddings over the BotData library), and AI Search per bot once there's a Cloudflare account (research/bot-storage.md).
+2. pi-durable codemode (QuickJS, replay-safe) for multi-step data work (fetch 50 pages, parse, insert) once single tool calls get slow.
+3. Group chats: search across rooms, routines that post into a group.

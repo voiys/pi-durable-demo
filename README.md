@@ -4,7 +4,7 @@ Local-only demo: email/password accounts, each user connects their ChatGPT plan 
 
 ## Run
 
-`mise install && pnpm install && echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" > .env && pnpm dev`, then open **http://127.0.0.1:1455** (not `localhost`: the ChatGPT callback is pinned to 127.0.0.1).
+`mise install && pnpm install && printf "BETTER_AUTH_SECRET=%s\nSEARXNG_SECRET=%s\n" $(openssl rand -hex 32) $(openssl rand -hex 32) > .env && pnpm dev` (Docker running), then open **http://127.0.0.1:1455** (not `localhost`: the ChatGPT callback is pinned to 127.0.0.1).
 
 ## Slices
 
@@ -13,6 +13,9 @@ Local-only demo: email/password accounts, each user connects their ChatGPT plan 
 3. Search (rail) runs FTS5 bm25 over every bot's user + assistant messages in your User DO; a hit opens that bot at the message.
 4. ChatGPT connection in the account menu (Manage usage, Disconnect) and a per-bot model + reasoning-effort picker limited to what your plan offers.
 5. Bot details (click its name): instructions, subagents, routines (ask the bot "every weekday at 8 do X"), memory budget and reset, delete. Bots message each other with the `bots` tool.
+6. Research: bots search the web through a local SearXNG container (started by `pnpm dev` via alchemy; needs Docker), read pages, keep data in their own SQL workspace and save reports to their library (details panel).
+7. Main bot: the first bot (or the one you pick) manages the rest: "make me a bot that…", rename, re-instruct, delete.
+8. Group chats: + → New group, pick bots; @mention to route; disband from the group's details.
 
 ## Checks
 

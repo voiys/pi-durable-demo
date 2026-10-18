@@ -18,3 +18,8 @@ Things done quickly on the way to v0. Fix if we decide they matter.
 - Check scripts: `--check` must be rerun after a new library table first appears locally; lineage spends one real turn of the ChatGPT plan and adds a chat to a@test.dev each run; isolation creates chats for the test users when they have none. Agent tools (subagent/agents/sessions) were exercised live by hand on 2026-10-18 and work, but no script covers them.
 
 - shadcn@4.22.1 (npm, only for shadcn/tailwind.css) was published 2026-10-18, the day we installed it, so pnpm added it to minimumReleaseAgeExclude in pnpm-workspace.yaml. It matches the registry source our components were copied from. Drop the exclusion once it is older than the release-age window.
+- `web_fetch` fetches any http(s) URL, including 127.0.0.1 (the app itself, SearXNG). Fine for a local demo; a deployed version needs an allowlist or a private-address block.
+- SearXNG's default engines get throttled (Brave "too many requests", DuckDuckGo CAPTCHA); Google/Bing results still come back. No engine tuning yet.
+- Group chats: a member whose turn errors or is aborted stays in the room's "typing" list until its next reply; no retry. Bots in a group have no memory view in their group conversation (only their DM does); what they saw is logged to memory and recalled from the DM.
+- Report cards are found by parsing "Saved report <id>:" from the library tool's output.
+
