@@ -144,11 +144,11 @@ function App() {
           {state && <NavUser user={user} chatgpt={state.chatgpt} />}
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset className="h-svh">
+      <SidebarInset className="h-svh min-w-0">
         <header className="flex h-12 items-center gap-2 border-b px-3">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-          <span className="truncate text-sm font-medium">{title}</span>
+          <span className="min-w-0 truncate text-sm font-medium" title={title}>{title}</span>
         </header>
         {chat ? (
           <ChatPane key={`${chat}:${agent ?? "main"}`} userId={user.id} chatId={chat} session={agent} entry={entry} chats={state?.chats ?? []} />

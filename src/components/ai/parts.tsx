@@ -91,8 +91,11 @@ function step(call: ToolCall, output: string, running: boolean, ctx: ToolContext
         body: output && <List items={output.split("\n")} />,
       };
     }
-    case "date":
-      return { icon: <CalendarIcon />, title: `${v("Checking", "Checked")} the date of message ${a.id}`, description: output };
+    case "date": {
+      // The tool answers with Date#toString for the model; the row shows it short.
+      const date = new Date(output);
+      return { icon: <CalendarIcon />, title: `${v("Checking", "Checked")} the date of message ${a.id}`, description: isNaN(+date) ? output : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) };
+    }
   }
   return {
     icon: <TerminalIcon />,
