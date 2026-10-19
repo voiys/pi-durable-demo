@@ -401,12 +401,15 @@ type AskCall = Extract<PiMessagePart, { type: "tool-call" }>;
 
 /** Consecutive thinking/tool-call parts form one activity run; each text part is a bubble (`writing` is the one the bot
  * is still writing, shown as typing even before its first word); an `ask` call is a question card. */
-function groupParts(parts: readonly PiMessagePart[], writing: PiMessagePart | undefined) {
+function groupParts(parts: readonly PiMessagePart[], writing: PiMessagePart | undefined, results: ToolContext["results"]) {
   const groups: ({ text: string; part: PiMessagePart } | { ask: AskCall } | { run: PiMessagePart[] })[] = [];
   for (const part of parts) {
     const last = groups.at(-1);
     if (part.type === "text") (part.text.trim() || part === writing) && groups.push({ text: part.text, part });
-    else if (part.type === "tool-call" && part.name === "ask") groups.push({ ask: part });
+    // A question shows once `ask` has run: before that its arguments may still be streaming in (no options yet), and a
+    // call pi refused (bad arguments) stays an activity step.
+    else if (part.type === "tool-call" && part.name === "ask" && results.get(part.id)?.error === false) groups.push({ ask: part });
+    else if (part.type === "tool-call" && part.name === "ask" && !results.has(part.id)) continue;
     else if (last && "run" in last) last.run.push(part);
     else groups.push({ run: [part] });
   }
@@ -484,7 +487,7 @@ function ReportCard({ id, title }: { id: number; title: string }) {
  * the turn ended. Each text block is its own message: typing while it is written, then the whole bubble fades in.
  * `between`: the run goes on with nothing live (see BotPane). `answerOf` is the answer you gave to a question after this turn. */
 function BotTurn({ turn, ctx, name, writing, between, answerOf, onAnswer }: { turn: PiTurn; ctx: ToolContext; name: string; writing?: PiMessagePart; between: boolean; answerOf: (question: string) => string | undefined; onAnswer: (text: string) => void }) {
-  const groups = groupParts(turn.parts, writing);
+  const groups = groupParts(turn.parts, writing, ctx.results);
   // The turn's words are one run, whatever activity sits between them.
   const said = groups.flatMap((g, i) => ("text" in g ? [i] : []));
   const run = (i: number) => ({ first: i === said[0], last: i === said.at(-1) });
