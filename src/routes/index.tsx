@@ -177,7 +177,7 @@ function App() {
                     active={active}
                     unread={b.unread}
                     onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}
-                    face={<BotAvatar look={b.look} size={36} working={b.working} />}
+                    face={<BotAvatar look={b.look} size={36} working={b.working} follow />}
                     card={{ name: b.name, line: [main && "Main bot", status(b) ?? "Up to date"].filter(Boolean).join(" · "), about: b.instructions }}
                   />,
                 ];

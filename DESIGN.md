@@ -125,7 +125,8 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   are left out of the colors: each vanishes on one theme. New bots start on the next shape and color in line.
 
 ### Rail
-- Canvas fill, no border (the color step is the edge). Bots as their 36px faces, main bot first with an 8px gap +
+- Canvas fill, no border (the color step is the edge). Bots as their 36px faces, which turn their heads toward the
+  pointer wherever it is (bloub `follow`; idle only, not under reduced motion), main bot first with an 8px gap +
   hairline. Groups after another hairline: a 36px muted tile holding up to three member faces.
 - **Glance layer (required):** a working bot's face becomes bloub's thinking dots (still dots under reduced motion);
   unread shows a 8px blue dot top-right. Tooltip = name + one-line status ("Reading 3 pages…").

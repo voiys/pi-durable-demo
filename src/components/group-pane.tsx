@@ -28,7 +28,7 @@ export function GroupAvatar({ members, size = "md", face = { sm: 20, lg: 56 }[si
       // The same 36px rounded square as a bot's face, so every rail item has one shape; the faces sit inside it.
       <span aria-hidden className="bg-muted relative flex size-9 shrink-0 rounded-xl">
         {shown.map((m, i) => (
-          <BotAvatar key={i} look={m.look} size={i === 2 ? 12 : 16} className={cn("absolute", ["top-1 left-1", "right-1 bottom-1", "top-1 right-1"][i])} />
+          <BotAvatar key={i} look={m.look} size={i === 2 ? 12 : 16} follow className={cn("absolute", ["top-1 left-1", "right-1 bottom-1", "top-1 right-1"][i])} />
         ))}
       </span>
     );
