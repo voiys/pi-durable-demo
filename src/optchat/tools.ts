@@ -1,5 +1,6 @@
 // Adaptation of jonaslsaa/pi-optchat src/tools.ts (MIT): zoom, date and search as pi-durable tools.
 // Dropped: zoom("<run id>") into subagent runs and image loading (subagents here are pi-durable conversations).
+import { intent } from "../server/intent.ts";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool } from "@earendil-works/pi-durable";
 import type { MemoryApi } from "./extension.ts";
@@ -28,21 +29,21 @@ export function optchatTools(memory: MemoryApi) {
   const zoom = defineTool({
     name: "zoom",
     description: `Open the line id+n of the view into the two lines of n/2 under it; n = 1 (the default) gives the message whole. A message over ${PAGE.toLocaleString("en-US")} characters comes in pages; offset and limit (characters) read any part of it.`,
-    parameters: Type.Object({ id: Type.Integer({ minimum: 0 }), n: Type.Optional(Type.Integer({ minimum: 1 })), offset: Type.Optional(Type.Integer({ minimum: 0 })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: PAGE })) }),
+    parameters: Type.Object({ intent, id: Type.Integer({ minimum: 0 }), n: Type.Optional(Type.Integer({ minimum: 1 })), offset: Type.Optional(Type.Integer({ minimum: 0 })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: PAGE })) }),
     replay: "safe",
     execute: async ({ id, n = 1, offset, limit }) => say(await memory.zoom(id, n, offset, limit)),
   });
   const date = defineTool({
     name: "date",
     description: "The date and time of message id.",
-    parameters: Type.Object({ id: Type.Integer({ minimum: 0 }) }),
+    parameters: Type.Object({ intent, id: Type.Integer({ minimum: 0 }) }),
     replay: "safe",
     execute: async ({ id }) => say(await memory.date(id)),
   });
   const search = defineTool({
     name: "search",
     description: `Find the original messages that contain text (plain text, any case), newest first, ${SEARCH_PAGE} at a time; before: id continues with older ones. zoom(id, 1) gives a hit whole.`,
-    parameters: Type.Object({ text: Type.String({ minLength: 1 }), before: Type.Optional(Type.Integer({ minimum: 0 })) }),
+    parameters: Type.Object({ intent, text: Type.String({ minLength: 1 }), before: Type.Optional(Type.Integer({ minimum: 0 })) }),
     replay: "safe",
     execute: async ({ text, before }) => say(await memory.search(text, before)),
   });

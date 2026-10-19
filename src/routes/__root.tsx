@@ -9,8 +9,14 @@ export const Route = createRootRoute({
     links: [{ rel: "stylesheet", href: appCss }],
   }),
   component: () => (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Dark mode follows the system, set before first paint so there's no flash (the `.dark` class is the one switch). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: "(()=>{const m=matchMedia('(prefers-color-scheme: dark)');const s=()=>document.documentElement.classList.toggle('dark',m.matches);s();m.addEventListener('change',s)})()",
+          }}
+        />
         <HeadContent />
       </head>
       <body>

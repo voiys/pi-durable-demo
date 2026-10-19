@@ -1,5 +1,6 @@
 // Web research tools for every agent of a bot: search through the local SearXNG (alchemy.run.ts) and fetch a page as
 // readable text. SearXNG only returns links and snippets, so opening a result is web_fetch.
+import { intent } from "./intent.ts";
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 
@@ -45,7 +46,7 @@ export function webExtension(searxngUrl: string) {
       defineTool({
         name: "web_search",
         description: "Search the web (SearXNG). Returns numbered results with title, url and snippet; open one with web_fetch.",
-        parameters: Type.Object({ query: Type.String(), page: Type.Optional(Type.Integer({ minimum: 1, description: "Result page, from 1" })) }),
+        parameters: Type.Object({ intent, query: Type.String(), page: Type.Optional(Type.Integer({ minimum: 1, description: "Result page, from 1" })) }),
         replay: "safe",
         execute: async ({ query, page }) => {
           const url = `${searxngUrl}/search?${new URLSearchParams({ q: query, format: "json", pageno: String(page ?? 1) })}`;
@@ -59,7 +60,7 @@ export function webExtension(searxngUrl: string) {
       defineTool({
         name: "web_fetch",
         description: `Open a web page as readable text with its links numbered at the end. Long pages come ${PAGE} characters at a time: pass offset to read on.`,
-        parameters: Type.Object({ url: Type.String(), offset: Type.Optional(Type.Integer({ minimum: 0 })) }),
+        parameters: Type.Object({ intent, url: Type.String(), offset: Type.Optional(Type.Integer({ minimum: 0 })) }),
         replay: "safe",
         execute: async ({ url, offset = 0 }) => {
           if (!/^https?:\/\//.test(url)) return { ...say("Only http(s) URLs."), isError: true };

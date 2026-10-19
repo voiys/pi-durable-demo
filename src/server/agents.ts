@@ -4,6 +4,7 @@
 // main agent can also spawn subagents and reach the user's other bots (other Bot DOs of the same user).
 // Subagent machinery (Subagents doc, Anchor, Reporter) is adapted from pi-source-v1.3.0
 // packages/durable/test/examples/23-subagent-background.ts.
+import { intent } from "./intent.ts";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { type AssistantMessage, Type } from "@earendil-works/pi-ai";
 import {
@@ -142,7 +143,7 @@ export function agentExtensions(host: AgentHost) {
       "Talk to the other agents of this session. Actions: list (all agents and whether they are working), " +
       "send (to, message: delivered to that agent as a new message; use to: \"main\" to report to the main agent), " +
       "last (name: that agent's last answer), inspect (name: status, last answer and last tool call, to check on a stuck agent).",
-    parameters: Type.Object({
+    parameters: Type.Object({ intent,
       action: Type.Union([Type.Literal("list"), Type.Literal("send"), Type.Literal("last"), Type.Literal("inspect")]),
       name: Type.Optional(Type.String({ description: "Target agent for send/last/inspect" })),
       message: Type.Optional(Type.String()),
@@ -174,7 +175,7 @@ export function agentExtensions(host: AgentHost) {
       "Manage background subagents of this session. Actions: spawn (name, message), send (name, message; followUp: true " +
       "queues it after the current answer instead of steering), stop (name: aborts its current work), retire (name: stops it " +
       "and removes it from the session for good). Their answers are reported back to you.",
-    parameters: Type.Object({
+    parameters: Type.Object({ intent,
       action: Type.Union([Type.Literal("spawn"), Type.Literal("send"), Type.Literal("stop"), Type.Literal("retire")]),
       name: Type.String(),
       message: Type.Optional(Type.String()),
@@ -220,7 +221,7 @@ export function agentExtensions(host: AgentHost) {
     description:
       "Reach the user's other bots, each an agent with its own conversation and memory. Actions: list, send (name, message: " +
       "delivered to that bot as a new message from you), last (name: that bot's last answer).",
-    parameters: Type.Object({
+    parameters: Type.Object({ intent,
       action: Type.Union([Type.Literal("list"), Type.Literal("send"), Type.Literal("last")]),
       name: Type.Optional(Type.String()),
       message: Type.Optional(Type.String()),

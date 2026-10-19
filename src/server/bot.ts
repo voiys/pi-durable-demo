@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { intent } from "./intent.ts";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type, type AssistantMessage } from "@earendil-works/pi-ai";
 import { createRegistry, defineExtension, defineTool, GenerationTask, Harness, hook, ROOT_CONVERSATION_ID, type EntryRecord } from "@earendil-works/pi-durable";
@@ -161,7 +162,7 @@ export class Bot extends DurableObject<Env> {
           "Manage the user's bots (you are the main bot). Actions: list (names and instructions), create (name, instructions: " +
           "what the bot is for, in the user's words), rename (name, newName), instruct (name, instructions: replaces them), " +
           "delete (name: deletes the bot with its conversation, memory and data for good; only when the user asked).",
-        parameters: Type.Object({
+        parameters: Type.Object({ intent,
           action: Type.Union([Type.Literal("list"), Type.Literal("create"), Type.Literal("rename"), Type.Literal("instruct"), Type.Literal("delete")]),
           name: Type.Optional(Type.String()),
           newName: Type.Optional(Type.String()),
@@ -422,7 +423,7 @@ export class Bot extends DurableObject<Env> {
         description:
           "Prompts you get on a schedule, in this conversation. Actions: list, add (name, prompt, cron: 5-field cron in UTC, " +
           'e.g. "0 7 * * 1-5" for weekdays at 07:00 UTC), remove (name).',
-        parameters: Type.Object({
+        parameters: Type.Object({ intent,
           action: Type.Union([Type.Literal("list"), Type.Literal("add"), Type.Literal("remove")]),
           name: Type.Optional(Type.String()),
           prompt: Type.Optional(Type.String()),
@@ -458,7 +459,7 @@ export class Bot extends DurableObject<Env> {
           "Your private SQLite database for research data: create tables for what you collect, insert rows, and analyze with " +
           "SQL (JSON functions, window functions, FTS5 virtual tables all work). Runs any statements; the last one's rows come " +
           "back as a table (200 rows max). Pass `schema: true` instead of a query to see your tables.",
-        parameters: Type.Object({ query: Type.Optional(Type.String()), schema: Type.Optional(Type.Boolean()) }),
+        parameters: Type.Object({ intent, query: Type.Optional(Type.String()), schema: Type.Optional(Type.Boolean()) }),
         replay: "unsafe",
         execute: async ({ query, schema }) => {
           if (schema) return say(await this.#data().schema());
@@ -471,7 +472,7 @@ export class Bot extends DurableObject<Env> {
         description:
           "Your library of reports, which the user reads in the bot's details panel. Actions: save (title, body: markdown; " +
           "use it for finished research write-ups), list, read (id).",
-        parameters: Type.Object({
+        parameters: Type.Object({ intent,
           action: Type.Union([Type.Literal("save"), Type.Literal("list"), Type.Literal("read")]),
           title: Type.Optional(Type.String()),
           body: Type.Optional(Type.String()),

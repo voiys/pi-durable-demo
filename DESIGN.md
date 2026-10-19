@@ -22,6 +22,10 @@ and trusting what comes back because you can open the receipts.** Every screen s
 
 ## 2. Principles
 
+0. **Minimal and intentional; no sticker book (user's call, 2026-10-19).** Icons only where a symbol beats a word
+   (send arrow, close, the model brain). No icons on activity lines, panel sections, list rows, empty states or menu
+   items. Typography, spacing and one blue do the work.
+
 1. **One accent, one job.** Apple Blue `#0071e3` means "yours / act here": your bubbles, the send button, the one primary
    action per view, the active rail ring. Nothing decorative is ever blue.
 2. **Chrome recedes, content speaks.** No borders where space works; hairlines (0.5–1px) where it doesn't; shadows only
@@ -116,7 +120,13 @@ Bubbles are 15px (Messages on macOS is ~15px); inputs are 16px below `md` (iOS z
 - **Time divider:** caption, centered, `Today 12:11`, shown when 30+ min pass. No lines.
 - **Delivered/read:** under your last bubble, caption gray: "Delivered" → "Read" when the bot starts → "Working…" (live
   line) → the reply.
-- **Activity:** a single 13px secondary line with a leading 14px icon above the reply ("Searched the web, read 3 pages,
+- **Intent and outcome (tools):** every tool call carries an `intent` the model writes for the user ("Checking
+  Cloudflare's official limits page for the row-size cap"). The thread shows intents as editorial lines, never tool
+  names, icons, arguments or raw output. While running: the intent with a shimmer. Settled: the intent in muted ink, its
+  outcome after it in the same voice ("found it", "3 sources", or "didn't work: the page was down"). A run reads like a
+  short paragraph of what the bot set out to do and how each attempt went; details (sources as links, a data table, the
+  report) only on request.
+- **Activity (superseded by intent and outcome):** a single 13px secondary line with a leading 14px icon above the reply ("Searched the web, read 3 pages,
   saved data"), chevron on hover only; expands into steps; steps expand into sources/data. Running: shimmer on the text,
   never a spinner.
 - **Artifacts:** reports, tables and links render as cards (12px radius, surface fill, hairline) inline after the

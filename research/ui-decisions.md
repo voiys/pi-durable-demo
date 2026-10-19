@@ -9,3 +9,13 @@
 - The page itself never scrolls; only the thread scrolls (no body overscroll).
 - Toasts: title + description, shadow elevation, only the icon is red on errors.
 - See research/ui-acceptance.md for the review criteria that must also hold.
+
+## 2026-10-19 (user, after the bots rebuild)
+
+- Follow DESIGN.md (Apple x Linear for messaging, iMessage feel). It overrides shadcn defaults and earlier styling notes.
+- No decorative icons: minimal and intentional, "icons everywhere feel like a sticker book for children". Activity lines,
+  panel sections, list rows, menus and empty states carry no icons.
+- Tools are shown as intent and outcome in editorial words: each call's `intent` (written by the model) and whether it
+  succeeded, never tool names, arguments, SQL or JSON on the surface.
+- Work in a race phase then a polish phase. Everything must fit together and look professional and complete.
+
