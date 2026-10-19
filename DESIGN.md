@@ -162,15 +162,21 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   ("Routine ai-news ran", "scout brought in digger") for system events.
 
 ### Composer
-- Floating pill on the thread canvas: 44px min height, pill radius, composer shadow, 15px text. Left: model brain (24px
-  ghost). Right: send — 28px blue circle with a white up-arrow, appears enabled only with text; while running it becomes
+- Floating pill docked over the thread's bottom: nothing around the pill is painted, so messages scroll on beneath it
+  (no bottom fade); the thread keeps the composer's measured height free below its last message and the scroll-down
+  button rides above it. 44px min height, pill radius, composer shadow, 15px text. No model picker: every bot runs one
+  model (decided 2026-10-19). Right: send — 28px blue circle with a white up-arrow, appears enabled only with text; while running it becomes
   a stop square in `--muted`.
 - **Quote pills** sit inline before the draft, in one wrapping row with it (Grok Bot): a 24px `--muted` pill with the
   sender (13/510), an excerpt in curly quotes cut to 24 characters (13/400, full ink: muted gray on `--muted` is 4.15:1),
   the whole quote as its tooltip, and a 24px round × ("Remove quote from Scout") flush in its end. The draft takes the
   rest of the row and drops to its own line under 8rem; its 1px pad makes its line the pills' 24px, so the one-line
-  composer stays 44px. Backspace in an empty draft drops the last pill. Tab: brain, each ×, draft, send. With no quotes
+  composer stays 44px. Backspace in an empty draft drops the last pill. Tab: each ×, draft, send. With no quotes
   nothing renders (no empty list for screen readers).
+- **@-mentions** (groups): an `@` starting a word lists the members whose names start with what follows, in a popover
+  card (shadow-float, 12px radius, 6px inset) 4px over the pill's start: 32px rows of a 20px face and the name (13/510),
+  the active row `--accent`. Arrows move, Return or Tab puts `@name ` in, Escape closes until the next keystroke; the
+  draft is a combobox pointing at the active option.
 - **"Quote ⌘L"** floats over a selection: popover fill, solid `--muted` on hover; the `<kbd>` hint is caption gray,
   ink on hover, hidden from screen readers (the button carries `aria-keyshortcuts`).
 

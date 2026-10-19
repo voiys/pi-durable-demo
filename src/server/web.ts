@@ -10,6 +10,11 @@ const PAGE = 20_000;
 const SKIP = "script, style, noscript, svg, iframe, template, nav, footer, form, button";
 const BLOCK = "p, div, section, article, main, br, li, tr, h1, h2, h3, h4, h5, h6, pre, blockquote, table, ul, ol, dd, dt";
 
+// HTMLRewriter's text chunks are the raw source, entities still encoded ("Limits &amp; pricing").
+const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+const decode = (s: string) =>
+  s.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (raw, e: string) => (e[0] !== "#" ? (NAMED[e.toLowerCase()] ?? raw) : String.fromCodePoint(e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : Number(e.slice(1)))));
+
 /** A page as plain text (block elements on their own lines, headings marked) plus its numbered links, via HTMLRewriter. */
 async function readable(response: Response): Promise<string> {
   const type = response.headers.get("content-type") ?? "";
@@ -35,8 +40,8 @@ async function readable(response: Response): Promise<string> {
     .on("body *", { text: (t) => void (skipping || (text += t.text)) })
     .transform(response)
     .arrayBuffer();
-  const body = text.replace(/[ \t\f\v]+/g, " ").replace(/ *\n[\n ]*/g, (m) => (m.split("\n").length > 2 ? "\n\n" : "\n")).trim();
-  return `# ${title.trim()}\n\n${body}${links.length ? `\n\nLinks:\n${links.map((l, i) => `[${i + 1}] ${l}`).join("\n")}` : ""}`;
+  const body = decode(text).replace(/[ \t\f\v]+/g, " ").replace(/ *\n[\n ]*/g, (m) => (m.split("\n").length > 2 ? "\n\n" : "\n")).trim();
+  return `# ${decode(title).trim()}\n\n${body}${links.length ? `\n\nLinks:\n${links.map((l, i) => `[${i + 1}] ${l}`).join("\n")}` : ""}`;
 }
 
 export function webExtension(searxngUrl: string) {

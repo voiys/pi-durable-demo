@@ -75,7 +75,17 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
   return (
     <QuoteProvider>
       <div className="flex min-h-0 flex-1 flex-col">
-        <Thread busy={!!working}>
+        <Thread
+          busy={!!working}
+          composer={
+            <Composer
+              mentions={state?.members.map((m) => member(m.id))}
+              onSend={(text, replyTo) => void postToGroup({ data: { groupId, text, replyTo } }).catch(fail("send to the group"))}
+              ready={!!state}
+              placeholder={state ? `Message ${state.title}` : "Connecting…"}
+            />
+          }
+        >
           {!state && <ThreadSkeleton />}
           {state && messages.length === 0 && (
             <ThreadEmpty
@@ -112,11 +122,6 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
           })}
           {working && messages.at(-1)?.from !== null && <WorkingRow label={working} />}
         </Thread>
-        <Composer
-          onSend={(text, replyTo) => void postToGroup({ data: { groupId, text, replyTo } }).catch(fail("send to the group"))}
-          ready={!!state}
-          placeholder={state ? `Message ${state.title}` : "Connecting…"}
-        />
       </div>
     </QuoteProvider>
   );

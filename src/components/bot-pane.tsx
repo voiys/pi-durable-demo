@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUp, ChevronLeft, Square } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Activity, savedReports, Working, type ToolContext, type ToolResult } from "@/components/ai/activity";
 import { agentSender, isEvent, parseAgentMessage, SystemEvent, type AgentMsg, type Sender } from "@/components/ai/agents-message";
 import { Markdown } from "@/components/ai/markdown";
@@ -250,17 +250,30 @@ export function ThreadSkeleton() {
 }
 
 /** The scrolling thread on the white canvas, 720px wide at most: follows the live edge and jumps back to it. */
-export function Thread({ busy = false, children }: { busy?: boolean; children: ReactNode }) {
+/** The thread with its composer docked over the bottom: messages scroll on beneath the pill (nothing around it is
+ * painted), and the thread keeps the composer's measured height free below its last message. */
+export function Thread({ busy = false, composer, children }: { busy?: boolean; composer: ReactNode; children: ReactNode }) {
+  const dock = useRef<HTMLDivElement>(null);
+  const [docked, setDocked] = useState(0);
+  useEffect(() => {
+    const observer = new ResizeObserver(([e]) => setDocked(e.borderBoxSize[0].blockSize));
+    observer.observe(dock.current!);
+    return () => observer.disconnect();
+  }, []);
   return (
     <MessageScrollerProvider autoScroll>
-      <MessageScroller>
-        {/* No bar under the header (user's call): messages just fade as they pass beneath it. */}
-        <MessageScrollerViewport className="scroll-fade-t">
-          <MessageScrollerContent aria-busy={busy} className="mx-auto w-full max-w-[720px] gap-0 px-3 pt-2 pb-6 sm:px-4">
+      <MessageScroller style={{ "--composer": `${docked}px` } as CSSProperties}>
+        {/* No bar under the header (user's call): messages just fade as they pass beneath it. No fade at the bottom:
+            they pass beneath the composer as they are. */}
+        <MessageScrollerViewport className="scroll-fade-t scroll-pb-(--composer) [--scroll-fade-b-size:0px]">
+          <MessageScrollerContent aria-busy={busy} className="mx-auto w-full max-w-[720px] gap-0 px-3 pt-2 pb-[calc(var(--composer)+0.5rem)] sm:px-4">
             {children}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        <MessageScrollerButton />
+        <MessageScrollerButton className="data-[direction=end]:bottom-[calc(var(--composer)+0.5rem)]" />
+        <div ref={dock} className="pointer-events-none absolute inset-x-0 bottom-0">
+          {composer}
+        </div>
       </MessageScroller>
     </MessageScrollerProvider>
   );
@@ -272,9 +285,26 @@ export function Thread({ busy = false, children }: { busy?: boolean; children: R
  * `onStop` is set while there is work to stop. Enter sends (queued behind running work), Shift+Enter is a new line.
  * Quotes sit inline before the draft as pills (Grok Bot); the draft takes the rest of their row, or the next one when
  * under 8rem is left; Backspace in an empty draft drops the last pill. */
-export function Composer({ onSend, ready, onStop, placeholder }: { onSend: (text: string, replyTo?: string) => void; ready: boolean; onStop?: () => void; placeholder: string }) {
+export function Composer({ onSend, ready, onStop, placeholder, mentions = [] }: { onSend: (text: string, replyTo?: string) => void; ready: boolean; onStop?: () => void; placeholder: string; mentions?: BotSummary[] }) {
   const [draft, setDraft] = useState("");
   const { quotes, remove, clear, input } = useQuotes();
+  // @-mentions (groups): an "@" starting a word before the caret lists the members its letters start; arrows move, Return
+  // or Tab puts the name in, Escape closes the list until the next keystroke.
+  const [caret, setCaret] = useState(0);
+  const [picked, setPicked] = useState(0);
+  const [closed, setClosed] = useState(false);
+  const listId = useId();
+  const at = /(?:^|\s)@([^\s@]*)$/.exec(draft.slice(0, caret));
+  const options = at ? mentions.filter((m) => m.name.toLowerCase().startsWith(at[1].toLowerCase())) : [];
+  const open = options.length > 0 && !closed;
+  const active = Math.min(picked, options.length - 1);
+  const mention = (name: string) => {
+    const start = caret - at![1].length;
+    const end = start + name.length + 1;
+    setDraft(`${draft.slice(0, start)}${name} ${draft.slice(caret)}`);
+    setCaret(end);
+    requestAnimationFrame(() => input.current!.setSelectionRange(end, end));
+  };
   const typed = draft.trim() !== "";
   const stop = onStop !== undefined && !typed;
   const icon = useCalm(ICON);
@@ -286,15 +316,34 @@ export function Composer({ onSend, ready, onStop, placeholder }: { onSend: (text
     clear();
   };
   return (
+    // Docked over the thread (Thread): only the pill and the mention list take clicks, the rest is the thread's.
     <form
-      className="mx-auto w-full max-w-[720px] px-3 pt-2 pb-4 sm:px-4"
+      className="relative mx-auto w-full max-w-[720px] px-3 pt-2 pb-4 sm:px-4"
       onSubmit={(e) => {
         e.preventDefault();
         send();
       }}
     >
       {/* 22px is the pill at the 44px one-line height; it stays that radius as the draft grows. */}
-      <InputGroup className="bg-background shadow-composer h-auto min-h-11 items-end rounded-[22px] border-transparent">
+      {open && (
+        <ul id={listId} role="listbox" aria-label="Mention a bot" className="bg-popover shadow-float animate-in fade-in motion-safe:slide-in-from-bottom-1 pointer-events-auto absolute bottom-full left-3 mb-1 w-56 rounded-lg p-1.5 duration-150 sm:left-4">
+          {options.map((m, i) => (
+            <li
+              key={m.id}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={i === active}
+              onPointerDown={(e) => (e.preventDefault(), mention(m.name))}
+              onPointerMove={() => setPicked(i)}
+              className="aria-selected:bg-accent flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-sm"
+            >
+              <Face sender={m} className="size-5 text-xs" />
+              <span className="truncate font-medium">{m.name}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <InputGroup className="bg-background shadow-composer pointer-events-auto h-auto min-h-11 items-end rounded-[22px] border-transparent">
         {/* Clicks on the row's padding land in the draft. A 1px pad makes the draft's line the pills' 24px. */}
         <div className={"flex min-w-0 flex-1 cursor-text flex-wrap items-start gap-1 py-2.5 pr-2.5 pl-4"} onClick={(e) => e.target === e.currentTarget && input.current!.focus()}>
           <QuoteChips />
@@ -306,8 +355,17 @@ export function Composer({ onSend, ready, onStop, placeholder }: { onSend: (text
             placeholder={placeholder}
             aria-label="Message"
             className="placeholder:text-faint max-h-48 min-h-0 min-w-0 basis-32 px-0 py-px"
-            onChange={(e) => setDraft(e.target.value)}
+            {...(mentions.length > 0 && { role: "combobox", "aria-autocomplete": "list", "aria-expanded": open, "aria-controls": listId, "aria-activedescendant": open ? `${listId}-${active}` : undefined })}
+            onChange={(e) => (setDraft(e.target.value), setCaret(e.target.selectionStart), setPicked(0), setClosed(false))}
+            onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
             onKeyDown={(e) => {
+              if (open && !e.nativeEvent.isComposing && ["ArrowDown", "ArrowUp", "Enter", "Tab", "Escape"].includes(e.key)) {
+                e.preventDefault();
+                if (e.key === "Escape") setClosed(true);
+                else if (e.key.startsWith("Arrow")) setPicked((active + (e.key === "ArrowDown" ? 1 : options.length - 1)) % options.length);
+                else mention(options[active].name);
+                return;
+              }
               if (e.key === "Backspace" && draft === "" && quotes.length) remove(quotes.at(-1)!);
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
@@ -565,7 +623,17 @@ export function BotPane({ userId, bot, session: sessionId, entry, bots }: { user
   return (
     <QuoteProvider>
       <div className="flex min-h-0 flex-1 flex-col">
-        <Thread busy={session.running}>
+        <Thread
+          busy={session.running}
+          composer={
+            <Composer
+              onSend={(text) => session.submit(text)}
+              ready={session.status === "open"}
+              onStop={session.running ? session.abort : undefined}
+              placeholder={{ open: `Message ${name}`, connecting: "Connecting…", closed: "Offline, reconnecting…" }[session.status]}
+            />
+          }
+        >
           {turns.length === 0 && session.status !== "open" && <ThreadSkeleton />}
           {turns.length === 0 && session.status === "open" && !session.running && (
             <ThreadEmpty
@@ -620,12 +688,6 @@ export function BotPane({ userId, bot, session: sessionId, entry, bots }: { user
           )}
           <ScrollToMessage id={hit?.ids[0]} />
         </Thread>
-        <Composer
-          onSend={(text) => session.submit(text)}
-          ready={session.status === "open"}
-          onStop={session.running ? session.abort : undefined}
-          placeholder={{ open: `Message ${name}`, connecting: "Connecting…", closed: "Offline, reconnecting…" }[session.status]}
-        />
       </div>
     </QuoteProvider>
   );
