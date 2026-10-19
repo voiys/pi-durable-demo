@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { Plus, Search, X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { z } from "zod";
 import { BotAvatar } from "@/components/bot-avatar";
@@ -13,9 +14,10 @@ import { SearchPanel } from "@/components/search-panel";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { EmptyHeader } from "@/components/ui/empty";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ARRIVE, SETTLE, SettleEmpty, SLIDE_UP, useCalm } from "@/lib/motion";
 import { cn, fail } from "@/lib/utils";
 import { getSession, markSeen } from "@/server/fns";
 import type { BotSummary, GroupSummary, UserState } from "@/shared";
@@ -43,14 +45,17 @@ const status = (b: Pick<BotSummary, "working" | "unread">) => (b.working ? "Work
 
 /**
  * A face in the rail. The ring says which conversation is open (blue) or that the bot is working (its own color,
- * pulsing; steady under reduced motion); an open bot that is working pulses blue. The dot is unread, never on the open one.
+ * pulsing; steady under reduced motion); an open bot that is working pulses blue. The ring is always 2px, so moving it
+ * only changes its color (150ms). The dot is unread, never on the open one: it pops in once (scale 0.6 to 1, 200ms spring,
+ * no bounce; a fade under reduced motion) and fades out when read. A new face rises into the rail (ARRIVE).
  * Resting on it (or focusing it) shows a small card with a glance at who it is; the face itself opens the conversation.
  */
 function RailItem({ label, active, working = false, unread = false, color, onClick, face, card }: { label: string; active: boolean; working?: boolean; unread?: boolean; color?: string; onClick: () => void; face: ReactNode; card: Omit<GlanceProps, "face" | "open"> & { openable: boolean } }) {
   return (
     <HoverCard openDelay={300} closeDelay={100}>
       <HoverCardTrigger asChild>
-        <button
+        <motion.button
+          {...ARRIVE}
           aria-label={label}
           aria-current={active || undefined}
           onClick={onClick}
@@ -61,14 +66,24 @@ function RailItem({ label, active, working = false, unread = false, color, onCli
             aria-hidden
             style={{ "--bot": color } as CSSProperties}
             className={cn(
-              "pointer-events-none absolute inset-0 rounded-[15px] ring-2 transition-[box-shadow] duration-150 ring-inset",
+              "pointer-events-none absolute inset-0 rounded-[15px] ring-2 transition-[box-shadow] duration-150 ease-out ring-inset",
               active ? "ring-primary" : working ? "ring-(color:--bot)" : "ring-transparent",
-              working && "motion-safe:animate-pulse motion-safe:[animation-duration:1.6s]",
+              working && "motion-safe:animate-ring-pulse",
             )}
           />
           {face}
-          {unread && !active && <span aria-hidden className="bg-primary ring-canvas absolute top-0 right-0 size-2 rounded-full ring-2" />}
-        </button>
+          <AnimatePresence initial={false}>
+            {unread && !active && (
+              <motion.span
+                aria-hidden
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1, transition: { type: "spring", duration: 0.2, bounce: 0 } }}
+                exit={{ opacity: 0, transition: { duration: 0.15, ease: "easeOut" } }}
+                className="bg-primary ring-canvas absolute top-0 right-0 size-2 rounded-full ring-2"
+              />
+            )}
+          </AnimatePresence>
+        </motion.button>
       </HoverCardTrigger>
       {/* The faces' rings are cut in the rail's canvas color; on the card they are cut in its surface instead. */}
       <HoverCardContent side="right" align="start" className="flex flex-col gap-3 [--canvas:var(--popover)]">
@@ -101,16 +116,18 @@ function Glance({ face, name, line, about, open }: GlanceProps) {
   );
 }
 
-/** An empty main area: a title, one sentence and one action (DESIGN.md §6 Empty states). No icon. */
+/** An empty main area: a title, one sentence and one action (DESIGN.md §6 Empty states). No icon. It settles in once,
+ * title, sentence, then action (SETTLE). */
 function EmptyState({ title, children, action }: { title: string; children: ReactNode; action: ReactNode }) {
+  const settle = useCalm(SLIDE_UP);
   return (
-    <Empty className="gap-6">
+    <SettleEmpty.Root {...SETTLE} className="gap-6">
       <EmptyHeader className="gap-2">
-        <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{children}</EmptyDescription>
+        <SettleEmpty.Title variants={settle}>{title}</SettleEmpty.Title>
+        <SettleEmpty.Description variants={settle}>{children}</SettleEmpty.Description>
       </EmptyHeader>
-      <EmptyContent>{action}</EmptyContent>
-    </Empty>
+      <SettleEmpty.Content variants={settle}>{action}</SettleEmpty.Content>
+    </SettleEmpty.Root>
   );
 }
 
@@ -148,43 +165,48 @@ function App() {
   const showing = !search.new && (group ?? bot);
 
   return (
-    <div className="bg-background flex h-svh">
+    <div className="bg-background flex h-svh overflow-hidden">
       <nav aria-label="Bots" className="bg-canvas flex w-16 shrink-0 flex-col items-center gap-3 py-3">
         <div className="flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto overscroll-contain">
-          {/* The main bot sits on top, apart from the rest; groups come after another hairline. */}
-          {mainFirst.map((b, i) => {
-            const active = !search.new && !group && b.id === bot?.id;
-            const main = b.id === state?.mainBot;
-            return [
-              i === 1 && <Separator key="sep" className="w-8" />,
-              <RailItem
-                key={b.id}
-                label={[b.name, main && "main bot", status(b)].filter(Boolean).join(", ")}
-                active={active}
-                working={b.working}
-                unread={b.unread}
-                color={b.color}
-                onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}
-                face={<BotAvatar bot={b} />}
-                card={{ name: b.name, line: [main && "Main bot", status(b) ?? "Up to date"].filter(Boolean).join(" · "), about: b.instructions, openable: !active || !!subagent }}
-              />,
-            ];
-          })}
-          {state && state.groups.length > 0 && <Separator className="w-8" />}
-          {state?.groups.map((g) => {
-            const active = g.id === search.group && !search.new;
-            const members = membersOf(g);
-            return (
-              <RailItem
-                key={g.id}
-                label={`${g.title}, group`}
-                active={active}
-                onClick={() => navigate({ search: (s) => ({ group: g.id, panel: s.panel === "search" ? "search" : undefined }) })}
-                face={<GroupAvatar members={members} />}
-                card={{ name: g.title, line: `Group of ${members.length} bots`, about: members.map((m) => m.name).join(", "), openable: !active }}
-              />
-            );
-          })}
+          {/* The main bot sits on top, apart from the rest; groups come after another hairline. Mounted with the first
+              state, so the faces already there don't animate; later ones rise in and leave faster (ARRIVE). */}
+          {state && (
+            <AnimatePresence initial={false}>
+              {mainFirst.map((b, i) => {
+                const active = !search.new && !group && b.id === bot?.id;
+                const main = b.id === state.mainBot;
+                return [
+                  i === 1 && <Separator key="sep" className="w-8" />,
+                  <RailItem
+                    key={b.id}
+                    label={[b.name, main && "main bot", status(b)].filter(Boolean).join(", ")}
+                    active={active}
+                    working={b.working}
+                    unread={b.unread}
+                    color={b.color}
+                    onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}
+                    face={<BotAvatar bot={b} />}
+                    card={{ name: b.name, line: [main && "Main bot", status(b) ?? "Up to date"].filter(Boolean).join(" · "), about: b.instructions, openable: !active || !!subagent }}
+                  />,
+                ];
+              })}
+              {state.groups.length > 0 && <Separator key="groups-sep" className="w-8" />}
+              {state.groups.map((g) => {
+                const active = g.id === search.group && !search.new;
+                const members = membersOf(g);
+                return (
+                  <RailItem
+                    key={`group:${g.id}`}
+                    label={`${g.title}, group`}
+                    active={active}
+                    onClick={() => navigate({ search: (s) => ({ group: g.id, panel: s.panel === "search" ? "search" : undefined }) })}
+                    face={<GroupAvatar members={members} />}
+                    card={{ name: g.title, line: `Group of ${members.length} bots`, about: members.map((m) => m.name).join(", "), openable: !active }}
+                  />
+                );
+              })}
+            </AnimatePresence>
+          )}
         </div>
         {state?.chatgpt ? (
           <DropdownMenu>
@@ -271,31 +293,42 @@ function App() {
         )}
       </main>
 
-      {(search.panel === "search" || (search.panel === "details" && showing)) && (
-        <aside aria-label={search.panel === "search" ? "Search" : group ? "Group details" : "Bot details"} className="bg-canvas flex w-80 shrink-0 flex-col max-md:w-auto max-md:min-w-0 max-md:flex-1">
-          <div className="flex h-12 shrink-0 items-center justify-between pr-2 pl-4">
-            <h2 className="text-sm font-medium">{search.panel === "search" ? "Search" : "Details"}</h2>
-            <Button variant="ghost" size="icon-sm" aria-label="Close panel" className="text-muted-foreground hover:text-foreground rounded-full" onClick={() => navigate({ search: (s) => ({ ...s, panel: undefined, report: undefined }) })}>
-              <X />
-            </Button>
-          </div>
-          {search.panel === "search" ? (
-            <SearchPanel bots={bots} />
-          ) : group ? (
-            <GroupPanel key={group.id} group={group} bots={bots} onDisbanded={() => navigate({ search: {} })} />
-          ) : (
-            bot && (
-              <BotPanel
-                key={bot.id}
-                bot={bot}
-                main={state?.mainBot === bot.id}
-                report={search.report}
-                onDeleted={() => navigate({ search: {} })}
-              />
-            )
-          )}
-        </aside>
-      )}
+      <AnimatePresence initial={false}>
+        {(search.panel === "search" || (search.panel === "details" && showing)) && (
+          // The panel slides 8px in from its edge as it fades (200ms, DESIGN.md §7); the thread takes its new width at once,
+          // so nothing reflows frame by frame. It closes at once, and one open on page load doesn't animate.
+          <motion.aside
+            key="panel"
+            aria-label={search.panel === "search" ? "Search" : group ? "Group details" : "Bot details"}
+            initial={{ opacity: 0, x: 8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
+            className="bg-canvas flex w-80 shrink-0 flex-col max-md:w-auto max-md:min-w-0 max-md:flex-1"
+          >
+            <div className="flex h-12 shrink-0 items-center justify-between pr-2 pl-4">
+              <h2 className="text-sm font-medium">{search.panel === "search" ? "Search" : "Details"}</h2>
+              <Button variant="ghost" size="icon-sm" aria-label="Close panel" className="text-muted-foreground hover:text-foreground rounded-full" onClick={() => navigate({ search: (s) => ({ ...s, panel: undefined, report: undefined }) })}>
+                <X />
+              </Button>
+            </div>
+            {search.panel === "search" ? (
+              <SearchPanel bots={bots} />
+            ) : group ? (
+              <GroupPanel key={group.id} group={group} bots={bots} onDisbanded={() => navigate({ search: {} })} />
+            ) : (
+              bot && (
+                <BotPanel
+                  key={bot.id}
+                  bot={bot}
+                  main={state?.mainBot === bot.id}
+                  report={search.report}
+                  onDeleted={() => navigate({ search: {} })}
+                />
+              )
+            )}
+          </motion.aside>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

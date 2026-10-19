@@ -65,8 +65,9 @@ export function SearchPanel({ bots }: { bots: BotSummary[] }) {
         {status ?? (hits === undefined ? "Searching…" : `${hits.length} ${hits.length === 1 ? "match" : "matches"}`)}
       </p>
       {hits === undefined && <HitsSkeleton />}
+      {/* Mounts with each answer, so the hits fade in (150ms) where the skeleton was. */}
       {Array.isArray(hits) && hits.length > 0 && (
-        <ItemGroup className="-mx-2 min-h-0 gap-px overflow-y-auto overscroll-contain">
+        <ItemGroup className="animate-in fade-in -mx-2 min-h-0 gap-px overflow-y-auto overscroll-contain duration-150 ease-out">
           {hits.map((h) => {
             const bot = bots.find((b) => b.id === h.botId);
             return (

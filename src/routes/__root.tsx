@@ -1,4 +1,5 @@
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
+import { MotionConfig } from "motion/react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import appCss from "../styles.css?url";
@@ -20,9 +21,12 @@ export const Route = createRootRoute({
         <HeadContent />
       </head>
       <body>
-        <TooltipProvider>
-          <Outlet />
-        </TooltipProvider>
+        {/* Reduced motion: every motion element drops movement and scale and keeps its opacity (DESIGN.md §7). */}
+        <MotionConfig reducedMotion="user">
+          <TooltipProvider>
+            <Outlet />
+          </TooltipProvider>
+        </MotionConfig>
         <Toaster />
         <Scripts />
       </body>

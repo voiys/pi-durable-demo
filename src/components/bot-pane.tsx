@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUp, ChevronLeft, Square } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Activity, savedReports, Working, type ToolContext, type ToolResult } from "@/components/ai/activity";
 import { agentSender, isEvent, parseAgentMessage, SystemEvent, type AgentMsg, type Sender } from "@/components/ai/agents-message";
@@ -10,7 +10,7 @@ import { ModelPicker } from "@/components/model-picker";
 import { Attachment, AttachmentContent, AttachmentDescription, AttachmentTitle, AttachmentTrigger } from "@/components/ui/attachment";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import { Message, MessageAvatar, MessageContent, MessageHeader } from "@/components/ui/message";
@@ -29,7 +29,7 @@ import { Trace } from "@/components/ui/trace";
 import type { PiMessagePart } from "@/pi/transcript";
 import { usePiSession } from "@/pi/use-pi-session";
 import { toTurns, type PiTurn } from "@/pi/view";
-import { FADE, SLIDE_UP } from "@/lib/message-animations";
+import { CrossFade, FADE, ICON, RISE, SETTLE, SettleEmpty, SLIDE_UP, useCalm } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { setBotModel } from "@/server/fns";
 import { botObjectName, type BotSummary } from "@/shared";
@@ -80,25 +80,26 @@ function dayTime(ts: number) {
   return `${day} ${time}`;
 }
 
-/** "Today 12:11", centered caption, no rules; 24px of air on both sides (DESIGN.md §5). */
-export function TimeDivider({ id, ts }: { id: string; ts: number }) {
+const MotionMessageScrollerItem = motion.create(MessageScrollerItem);
+
+/** "Today 12:11", centered caption, no rules; 24px of air on both sides (DESIGN.md §5). It fades in with the message it
+ * dates (`enter`). */
+export function TimeDivider({ id, ts, enter }: { id: string; ts: number; enter: boolean }) {
   return (
-    <MessageScrollerItem messageId={id} className="pt-6 pb-3 first:pt-2">
+    <MotionMessageScrollerItem messageId={id} className="pt-6 pb-3 first:pt-2" variants={FADE} initial={enter ? "initial" : false} animate="animate">
       <Marker className="justify-center">
         <MarkerContent>{dayTime(ts)}</MarkerContent>
       </Marker>
-    </MessageScrollerItem>
+    </MotionMessageScrollerItem>
   );
 }
-
-const MotionMessageScrollerItem = motion.create(MessageScrollerItem);
 
 /** A row's scroller item: 12px above a new speaker, 2px inside one speaker's run (DESIGN.md §5). Messages that arrive
  * while the thread is open animate in, yours sliding up, everyone else's fading (§7); history never does. */
 export function ThreadItem({ id, first, enter, mine, anchor = false, children }: { id: string; first: boolean; enter: boolean; mine: boolean; anchor?: boolean; children: ReactNode }) {
-  const reduceMotion = useReducedMotion();
+  const variants = useCalm(mine ? SLIDE_UP : FADE);
   return (
-    <MotionMessageScrollerItem messageId={id} scrollAnchor={anchor} className={first ? "pt-3" : "pt-0.5"} variants={mine && !reduceMotion ? SLIDE_UP : FADE} initial={enter ? "initial" : false} animate="animate">
+    <MotionMessageScrollerItem messageId={id} scrollAnchor={anchor} className={first ? "pt-3" : "pt-0.5"} variants={variants} initial={enter ? "initial" : false} animate="animate">
       {children}
     </MotionMessageScrollerItem>
   );
@@ -139,28 +140,33 @@ export function Said({ mine = false, tail, error = false, children }: { mine?: b
   );
 }
 
-/** A caption under the last bubble: "Delivered", or the live "Working…" while the work runs. */
-export function Status({ working = false, children }: { working?: boolean; children: ReactNode }) {
+/** A caption under the last bubble: "Delivered", or the live "Working…" while the work runs; a new word cross-fades over
+ * the old in the same line box (right-aligned under your bubble, so neither width shifts it). */
+export function Status({ working = false, children }: { working?: boolean; children: string }) {
   return (
-    <p data-slot="message-status" className={cn("text-muted-foreground w-fit px-1 pt-0.5 text-xs font-medium", working && "shimmer motion-reduce:shimmer-none")}>
-      {children}
+    <p data-slot="message-status" className="text-muted-foreground grid w-fit justify-items-end px-1 pt-0.5 text-xs font-medium">
+      <CrossFade text={children} className={cn(working && "shimmer motion-reduce:shimmer-none")} />
     </p>
   );
 }
 
-/** A left-aligned line saying someone is at work, after a message that isn't yours. */
+/** A left-aligned line saying someone is at work, after a message that isn't yours; it fades in like a reply. */
 export function WorkingRow({ label }: { label?: string }) {
   return (
-    <MessageScrollerItem messageId="working" className="pt-3">
+    <MotionMessageScrollerItem messageId="working" className="pt-3" variants={FADE} initial="initial" animate="animate">
       <Trace>
         <Working label={label} />
       </Trace>
-    </MessageScrollerItem>
+    </MotionMessageScrollerItem>
   );
 }
 
-/** A thread with nothing in it yet: the face large, the name, one sentence, and optional first messages to send. */
+const MotionButton = motion.create(Button);
+
+/** A thread with nothing in it yet: the face large, the name, one sentence, and optional first messages to send, which
+ * stagger in (an empty state is rare enough for a staged entrance). */
 export function ThreadEmpty({ face, title, description, suggestions = [], onPick }: { face: ReactNode; title: string; description: string; suggestions?: string[]; onPick?: (text: string) => void }) {
+  const chip = useCalm(SLIDE_UP);
   return (
     <MessageScrollerItem messageId="empty" className="flex flex-1 flex-col">
       <Empty className="gap-5 px-2">
@@ -170,13 +176,13 @@ export function ThreadEmpty({ face, title, description, suggestions = [], onPick
           <EmptyDescription className="line-clamp-3">{description}</EmptyDescription>
         </EmptyHeader>
         {suggestions.length > 0 && (
-          <EmptyContent className="flex-row flex-wrap justify-center gap-2">
+          <SettleEmpty.Content className="flex-row flex-wrap justify-center gap-2" {...SETTLE}>
             {suggestions.map((s) => (
-              <Button key={s} variant="secondary" size="sm" className="h-auto min-h-8 rounded-full px-3.5 py-1.5 font-normal whitespace-normal" onClick={() => onPick!(s)}>
+              <MotionButton key={s} variants={chip} variant="secondary" size="sm" className="h-auto min-h-8 rounded-full px-3.5 py-1.5 font-normal whitespace-normal" onClick={() => onPick!(s)}>
                 {s}
-              </Button>
+              </MotionButton>
             ))}
-          </EmptyContent>
+          </SettleEmpty.Content>
         )}
       </Empty>
     </MessageScrollerItem>
@@ -220,11 +226,14 @@ export function Thread({ busy = false, children }: { busy?: boolean; children: R
 }
 
 /** The floating pill composer (DESIGN.md §6, AI Elements prompt-input on InputGroup): the model brain on the left, a
- * blue send circle on the right that wakes up with text, a stop square while the bot works and nothing is typed.
+ * blue send circle on the right that wakes up with text, a stop square while the bot works and nothing is typed. Send
+ * and stop are one button, so its fill changes color (150ms) and its icon cross-fades (better-ui icon-transitions).
  * `onStop` is set while there is work to stop. Enter sends (queued behind running work), Shift+Enter is a new line. */
 export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend: (text: string) => void; ready: boolean; onStop?: () => void; placeholder: string; tools?: ReactNode }) {
   const [draft, setDraft] = useState("");
   const typed = draft.trim() !== "";
+  const stop = onStop !== undefined && !typed;
+  const icon = useCalm(ICON);
   const send = () => {
     if (!typed || !ready) return;
     onSend(draft);
@@ -261,15 +270,21 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
           }}
         />
         <InputGroupAddon align="inline-end" className="py-2 pr-2 has-[>button]:mr-0">
-          {onStop && !typed ? (
-            <InputGroupButton type="button" variant="secondary" size="icon-sm" className="rounded-full" aria-label="Stop" onClick={onStop}>
-              <Square className="size-2.5 fill-current" />
-            </InputGroupButton>
-          ) : (
-            <InputGroupButton type="submit" variant="default" size="icon-sm" className="disabled:bg-muted disabled:text-faint rounded-full disabled:opacity-100" aria-label="Send" disabled={!ready || !typed}>
-              <ArrowUp className="size-4" strokeWidth={2.5} />
-            </InputGroupButton>
-          )}
+          <InputGroupButton
+            type={stop ? "button" : "submit"}
+            variant={stop ? "secondary" : "default"}
+            size="icon-sm"
+            className="disabled:bg-muted disabled:text-faint rounded-full disabled:opacity-100"
+            aria-label={stop ? "Stop" : "Send"}
+            disabled={!stop && (!ready || !typed)}
+            onClick={stop ? onStop : undefined}
+          >
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span key={stop ? "stop" : "send"} className="flex" variants={icon} initial="initial" animate="animate" exit="exit">
+                {stop ? <Square className="size-2.5 fill-current" /> : <ArrowUp className="size-4" strokeWidth={2.5} />}
+              </motion.span>
+            </AnimatePresence>
+          </InputGroupButton>
         </InputGroupAddon>
       </InputGroup>
     </form>
@@ -308,6 +323,7 @@ function ReportCard({ id, title }: { id: number; title: string }) {
 /** The bot's turn: what it set out to do and how it went (activity), its words, saved reports, and how the turn ended. */
 function BotTurn({ turn, ctx }: { turn: PiTurn; ctx: ToolContext }) {
   const groups = groupParts(turn.parts);
+  const rise = useCalm(RISE);
   return (
     <>
       {groups.map((g, i) =>
@@ -318,9 +334,14 @@ function BotTurn({ turn, ctx }: { turn: PiTurn; ctx: ToolContext }) {
         ) : (
           <div key={i} className="flex flex-col gap-2 py-1 empty:hidden">
             <Activity parts={g.run} ctx={ctx} live={turn.live && i === groups.length - 1} />
-            {savedReports(g.run, ctx).map((r) => (
-              <ReportCard key={r.id} {...r} />
-            ))}
+            {/* A card saved while you watch rises in after its line; history's cards are just there. */}
+            <AnimatePresence initial={false}>
+              {savedReports(g.run, ctx).map((r) => (
+                <motion.div key={r.id} variants={rise} initial="initial" animate="animate">
+                  <ReportCard {...r} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         ),
       )}
@@ -425,10 +446,11 @@ export function BotPane({ userId, bot, session: sessionId, entry, bots }: { user
           const last = !next || divides[i + 1] || next.key !== v.key;
           const mine = v.key === "you";
           const highlight = hit === v.turn && entry !== cleared;
+          const enter = v.turn.timestamp >= openedAt;
           return (
             <Fragment key={id}>
-              {divides[i] && <TimeDivider id={`time:${id}`} ts={v.turn.timestamp} />}
-              <ThreadItem id={v.turn.ids[0]} first={first} enter={v.turn.timestamp >= openedAt} mine={mine} anchor={i === anchorAt}>
+              {divides[i] && <TimeDivider id={`time:${id}`} ts={v.turn.timestamp} enter={enter} />}
+              <ThreadItem id={v.turn.ids[0]} first={first} enter={enter} mine={mine} anchor={i === anchorAt}>
                 {v.agent && isEvent(v.agent) ? (
                   <SystemEvent msg={v.agent} />
                 ) : (

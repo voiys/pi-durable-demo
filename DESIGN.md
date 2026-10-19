@@ -158,15 +158,44 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
 
 ## 7. Motion
 
+One ladder and one easing family. Enters take 150ms (rows, menus, hover-revealed things), 200ms (fades, arrivals) or
+300ms (your message, staged entrances); exits are one step shorter (100ms after a 150ms enter, else 150ms) or instant
+where motion adds nothing. Everything eases out (`ease-out`, the panel's `cubic-bezier(0.2,0,0,1)`, springs with
+`bounce: 0`); bare `transition-*` utilities ease out by default (`--default-transition-timing-function`). Transitions or
+springs for state (they retarget mid-flight), keyframes only for one-shot fades and loops. Name the properties, never
+`transition-all`; animate opacity, transform and filter only (height only through the collapsible's content variable).
+State swaps use `initial={false}`, and history, panel lists and the rail on load never animate in. Presets live in
+`src/lib/motion.tsx`.
+
 | What | Spec |
 |---|---|
 | Your message arrives | opacity 0→1, y 12→0, blur 4→0, 300ms ease-out (`SLIDE_UP`) |
-| Reply/agent message | opacity only, 200ms |
-| Panel open/close | width/opacity 200ms `cubic-bezier(0.2,0,0,1)`; content fades 150ms |
+| Reply, other senders, system caption, time divider, working row | opacity 200ms in, 150ms out (`FADE`) |
+| Streamed reply | Streamdown word fade, opacity 200ms ease-out, staggered, ≤320ms behind the stream; caret while streaming |
+| "Delivered" ↔ "Working…", who is working | words cross-fade in one grid cell (`CrossFade`, `FADE`), so the line never moves |
+| Activity line settles | running line fades out 150ms (popped out of flow) while its outcome fades in 200ms in place |
+| Lines fold into a summary | lines leave at once; summary opacity + blur 4→0, 200ms (`BLUR_IN`) |
+| Saved report card | opacity + y 4→0, 200ms, 100ms after its line (`RISE`) |
+| Send ↔ stop | fill color 150ms; icon scale 0.25→1, opacity, blur 4→0, spring 0.3s bounce 0 (`ICON`) |
+| Jump to latest | opacity + scale 0.96→1, 150ms in, 100ms out, no slide |
+| Rail face added / removed | opacity + y 4→0, 200ms in; opacity 150ms out (`ARRIVE`) |
+| Unread dot | opacity + scale 0.6→1, spring 0.2s bounce 0; fades out 150ms |
+| Active ring | always 2px, color only, 150ms |
+| Panel open | opacity + x 8→0, 200ms `cubic-bezier(0.2,0,0,1)`; the thread takes its width at once; closes at once |
+| Panel sections, report text, search hits | opacity 150ms on mount (replacing the skeleton) |
+| Panel list rows, inline confirm swap | opacity 150ms in, 100ms out (`ROW`); trigger and confirm share 32px so nothing jumps |
+| "Saved" caption | `FADE`, shown 1.5s after a field saves; the status region stays mounted |
+| Menus, popover, tooltip, hover card | opacity + zoom 0.96→1 + 4px from the trigger side, 150ms in, 100ms out |
+| Empty states, new bot, new group, empty-thread suggestions | chunks 100ms apart, each `SLIDE_UP` (`SETTLE`) |
+| Login card | `FADE` |
 | Disclosure | height via `--radix-collapsible-content-height`, 200ms |
-| Press | scale 0.96, 150ms, buttons only |
+| Press | scale 0.96, 150ms, buttons only, never disabled |
 | Hover | color/background only, ≤150ms |
-| Working ring / shimmer | 1.6s loops; none under `prefers-reduced-motion` |
+| Working ring / shimmer | 1.6s loops (`ring-pulse` opacity 1→0.4→1); none under `prefers-reduced-motion` |
+
+Reduced motion: `<MotionConfig reducedMotion="user">` at the root drops every movement and scale, `useCalm` swaps blur
+recipes for `FADE`, `motion-safe:`/`motion-reduce:` gate the CSS ones and tw-animate's zoom and slide, so every change
+becomes an opacity fade. Every animated change also leaves a static cue (words, color, the dot, the label).
 
 ## 8. Words
 

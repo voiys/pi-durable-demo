@@ -1,12 +1,17 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth-client";
+import { FADE } from "@/lib/motion";
 
 export const Route = createFileRoute("/login")({ component: Login });
+
+/** The card fades in once (FADE: opacity, 200ms ease-out): opacity only, so it is the same under reduced motion. */
+const MotionCard = motion.create(Card);
 
 type Problems = { email?: string; password?: string; form?: string };
 
@@ -51,7 +56,7 @@ function Login() {
 
   return (
     <main className="bg-canvas flex min-h-svh items-center justify-center p-4">
-      <Card className="bg-surface shadow-composer w-full max-w-sm gap-6 border-transparent py-8">
+      <MotionCard variants={FADE} initial="initial" animate="animate" className="bg-surface shadow-composer w-full max-w-sm gap-6 border-transparent py-8">
         <CardHeader className="gap-1 px-6 text-center">
           <CardTitle>
             <h1 className="text-2xl font-semibold">pi durable</h1>
@@ -90,7 +95,7 @@ function Login() {
             </FieldGroup>
           </form>
         </CardContent>
-      </Card>
+      </MotionCard>
     </main>
   );
 }

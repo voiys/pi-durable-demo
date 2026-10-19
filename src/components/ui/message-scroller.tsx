@@ -98,8 +98,9 @@ function MessageScrollerButton({
       direction={direction}
       className={cn(
         // Floats over the thread: a round popover-filled button with shadow-float (DESIGN.md §5). Hover changes ink only, so
-        // the fill stays opaque over the text beneath.
-        "absolute inset-s-1/2 -translate-x-1/2 rounded-full bg-popover text-muted-foreground shadow-float transition-[color,translate,scale,opacity] duration-200 hover:bg-popover hover:text-foreground motion-reduce:transition-[color,opacity] data-[active=false]:pointer-events-none data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=false]:duration-400 data-[active=false]:ease-[cubic-bezier(0.7,0,0.84,0)] data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100 data-[active=true]:ease-[cubic-bezier(0.23,1,0.32,1)] data-[direction=end]:bottom-4 data-[direction=end]:data-[active=false]:translate-y-full data-[direction=start]:top-4 data-[direction=start]:data-[active=false]:-translate-y-full rtl:translate-x-1/2 data-[direction=start]:[&_svg]:rotate-180",
+        // the fill stays opaque over the text beneath. Away from the end it fades and grows from 0.96 (150ms ease-out),
+        // leaving in 100ms; no slide. Reduced motion: the fade only.
+        "absolute inset-s-1/2 -translate-x-1/2 rounded-full bg-popover text-muted-foreground shadow-float transition-[color,scale,opacity] duration-150 ease-out hover:bg-popover hover:text-foreground motion-reduce:transition-[color,opacity] data-[active=false]:pointer-events-none data-[active=false]:scale-[0.96] data-[active=false]:opacity-0 data-[active=false]:duration-100 data-[active=true]:scale-100 data-[active=true]:opacity-100 data-[direction=end]:bottom-4 data-[direction=start]:top-4 rtl:translate-x-1/2 data-[direction=start]:[&_svg]:rotate-180",
         className
       )}
       render={render ?? <Button variant={variant} size={size} />}

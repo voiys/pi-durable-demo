@@ -4,14 +4,15 @@ import { Fragment, useRef, useState } from "react";
 import { Markdown } from "@/components/ai/markdown";
 import type { Sender } from "@/components/ai/agents-message";
 import { BotAvatar } from "@/components/bot-avatar";
-import { InlineConfirm, QUIET } from "@/components/inline-confirm";
+import { ConfirmSwap, InlineConfirm, QUIET } from "@/components/inline-confirm";
 import { breaksTime, Composer, HeaderBar, Said, Status, Thread, ThreadEmpty, ThreadItem, ThreadRow, ThreadSkeleton, TimeDivider, WorkingRow } from "@/components/bot-pane";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { EmptyHeader } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Item, ItemContent, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { SETTLE, SettleEmpty, SLIDE_UP, useCalm } from "@/lib/motion";
 import { cn, fail } from "@/lib/utils";
 import { createGroup, disbandGroup, postToGroup } from "@/server/fns";
 import { botObjectName, type BotSummary, type GroupState, type GroupSummary } from "@/shared";
@@ -78,10 +79,11 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
           const first = divides || prev.from !== m.from;
           const last = !next || breaksTime(m.ts, next.ts) || next.from !== m.from;
           const mine = m.from === null;
+          const enter = m.ts >= openedAt;
           return (
             <Fragment key={m.id}>
-              {divides && <TimeDivider id={`time:${m.id}`} ts={m.ts} />}
-              <ThreadItem id={m.id} first={first} enter={m.ts >= openedAt} mine={mine} anchor={i === anchorAt}>
+              {divides && <TimeDivider id={`time:${m.id}`} ts={m.ts} enter={enter} />}
+              <ThreadItem id={m.id} first={first} enter={enter} mine={mine} anchor={i === anchorAt}>
                 <ThreadRow mine={mine} sender={mine ? undefined : sender(m.from!)} first={first} last={last}>
                   <Said mine={mine} tail={last}>
                     {mine ? m.text : <Markdown>{m.text}</Markdown>}
@@ -104,7 +106,7 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
 }
 
 /** "New group", in place: which bots, and a name. Checked on submit: too few bots is said under them and focus goes
- * back to the first; a refusal from the server is said above the button. */
+ * back to the first; a refusal from the server is said above the button. It settles in once: title, sentence, form. */
 export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (id: string) => void }) {
   const [members, setMembers] = useState<string[]>([]);
   const [title, setTitle] = useState("");
@@ -112,13 +114,14 @@ export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (
   const [problem, setProblem] = useState<{ members?: string; form?: string }>({});
   const picker = useRef<HTMLFieldSetElement>(null);
   const picked = members.map((id) => bots.find((b) => b.id === id)!);
+  const settle = useCalm(SLIDE_UP);
   return (
-    <Empty className="justify-start pt-12 md:pt-20">
+    <SettleEmpty.Root {...SETTLE} className="justify-start pt-12 md:pt-20">
       <EmptyHeader className="gap-1.5">
-        <EmptyTitle>New group</EmptyTitle>
-        <EmptyDescription>Put a few bots in one room to work on something together. Each keeps what it learned after you disband it.</EmptyDescription>
+        <SettleEmpty.Title variants={settle}>New group</SettleEmpty.Title>
+        <SettleEmpty.Description variants={settle}>Put a few bots in one room to work on something together. Each keeps what it learned after you disband it.</SettleEmpty.Description>
       </EmptyHeader>
-      <EmptyContent className="max-w-sm">
+      <SettleEmpty.Content variants={settle} className="max-w-sm">
         <form
           noValidate
           className="w-full text-left"
@@ -156,8 +159,8 @@ export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (
             </Button>
           </FieldGroup>
         </form>
-      </EmptyContent>
-    </Empty>
+      </SettleEmpty.Content>
+    </SettleEmpty.Root>
   );
 }
 
@@ -195,13 +198,11 @@ export function GroupPanel({ group, bots, onDisbanded }: { group: GroupSummary; 
       </section>
       <div className="mt-auto flex flex-col gap-2">
         <p className="text-muted-foreground text-sm">Disbanding deletes this room. Each bot keeps what it saw here in its own memory.</p>
-        {confirming ? (
-          <InlineConfirm question={`Disband ${group.title}?`} action="Disband" onCancel={() => setConfirming(false)} onConfirm={() => disbandGroup({ data: group.id }).then(onDisbanded, fail("disband group"))} />
-        ) : (
+        <ConfirmSwap confirm={confirming && <InlineConfirm question={`Disband ${group.title}?`} action="Disband" onCancel={() => setConfirming(false)} onConfirm={() => disbandGroup({ data: group.id }).then(onDisbanded, fail("disband group"))} />}>
           <Button variant="ghost" size="sm" className={QUIET} onClick={() => setConfirming(true)}>
             Disband group
           </Button>
-        )}
+        </ConfirmSwap>
       </div>
     </div>
   );

@@ -3,9 +3,11 @@
 // like a short paragraph; no tool names, arguments, SQL or JSON on the surface, no icons. Receipts (the sources, the rows)
 // open on request; a page read or a conversation reached is a link.
 import { Link } from "@tanstack/react-router";
+import { AnimatePresence, motion } from "motion/react";
 import { Fragment, type ReactNode } from "react";
 import { clause, count, host, lower, past, prose } from "@/components/ai/intent";
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceLine, TraceTitle } from "@/components/ui/trace";
+import { BLUR_IN, CrossFade, FADE, useCalm } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { PiMessagePart } from "@/pi/transcript";
 import type { BotSummary } from "@/shared";
@@ -271,14 +273,17 @@ function Summary({ steps }: { steps: Step[] }) {
   );
 }
 
-/** A running line that says what the bot is doing now; shimmer comes from TraceLine's running status. */
+/** A running line that says what the bot is doing now, shimmering; new words ("Scout and Digger are working…")
+ * cross-fade over the old in the same line box. */
 export function Working({ label = "Thinking…" }: { label?: string }) {
   return (
-    <TraceLine status="running">
-      <TraceTitle className="whitespace-normal">{label}</TraceTitle>
+    <TraceLine className="grid">
+      <CrossFade text={label} className="shimmer motion-reduce:shimmer-none" />
     </TraceLine>
   );
 }
+
+const MotionTrace = motion.create(Trace);
 
 /**
  * One run of thinking and tool calls. Settled steps read as lines, or past two as a summary that opens to them; running
@@ -286,17 +291,29 @@ export function Working({ label = "Thinking…" }: { label?: string }) {
  * shows once settled (the answer speaks for it).
  */
 export function Activity({ parts, live, ctx }: { parts: readonly PiMessagePart[]; live: boolean; ctx: ToolContext }) {
+  const settle = useCalm(BLUR_IN);
   const steps = parts.flatMap((p) => (p.type === "tool-call" ? [describe(p, ctx.results.get(p.id), ctx)] : []));
   const settled = steps.filter((s) => s.phase !== "running");
   const running = steps.filter((s) => s.phase === "running" && s.intent);
   if (!live && !settled.length && !running.length) return null;
+  const folded = settled.length > 2;
+  // Each line is keyed by what it shows, so a step that settles cross-fades from its shimmering intent to its outcome in
+  // the same place (popLayout lifts the leaving line out of flow; the Trace is its frame). Lines folding into the
+  // summary leave at once and the summary blurs in. Lines there when the run first renders (history) never animate.
+  const lines = [
+    ...(folded ? [{ key: "summary", line: <Summary steps={settled} /> }] : settled.map((s) => ({ key: `${s.id}:settled`, line: <StepRow step={s} /> }))),
+    ...running.map((s) => ({ key: `${s.id}:running`, line: <StepRow step={s} /> })),
+    ...(live && !running.length ? [{ key: "thinking", line: <Working /> }] : []),
+  ];
   return (
-    <Trace>
-      {settled.length > 2 ? <Summary steps={settled} /> : settled.map((s) => <StepRow key={s.id} step={s} />)}
-      {running.map((s) => (
-        <StepRow key={s.id} step={s} />
-      ))}
-      {live && !running.length && <Working />}
+    <Trace className="relative">
+      <AnimatePresence initial={false} mode="popLayout" custom={folded}>
+        {lines.map(({ key, line }) => (
+          <MotionTrace key={key} variants={key === "summary" ? settle : FADE} initial="initial" animate="animate" exit="exit">
+            {line}
+          </MotionTrace>
+        ))}
+      </AnimatePresence>
     </Trace>
   );
 }

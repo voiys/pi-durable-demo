@@ -1,9 +1,10 @@
 import { Link, useNavigate } from "@tanstack/react-router";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cronText } from "@/components/ai/activity";
 import { Markdown } from "@/components/ai/markdown";
 import { BotAvatar } from "@/components/bot-avatar";
-import { InlineConfirm, QUIET } from "@/components/inline-confirm";
+import { ConfirmSwap, InlineConfirm, QUIET } from "@/components/inline-confirm";
 import { StepSlider } from "@/components/step-slider";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -12,6 +13,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemFooter, ItemGroup,
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { FADE, ROW } from "@/lib/motion";
 import { cn, fail } from "@/lib/utils";
 import { botDetails, deleteBot, deleteReport, deleteRoutine, readReport, resetMemory, retireSubagent, setMainBot, setMemoryBudget, setRoutineEnabled, updateBot } from "@/server/fns";
 import { VIEW_BUDGETS, type BotDetails, type BotSummary } from "@/shared";
@@ -23,9 +25,10 @@ const CAPTION = "text-muted-foreground text-xs font-medium";
 /** Shows a row's action on hover or focus, always on touch screens (no hover there). */
 const ON_HOVER = "opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100";
 
+/** Fades in when it appears (150ms): the skeleton's place on the first read, or a section's first row later. */
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="animate-in fade-in flex flex-col gap-2 duration-150 ease-out">
       <h3 className={CAPTION}>{title}</h3>
       {children}
     </section>
@@ -41,11 +44,36 @@ function Detail({ children }: { children: ReactNode }) {
   );
 }
 
+/** "Saved" for 1.5s after a field saves, then faded: the acknowledgment in place of a toast (FADE: opacity, in 200ms,
+ * out 150ms). The region stays mounted so each save is announced; the field's own value is the lasting cue. */
+function Saved({ at, className }: { at: number; className?: string }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!at) return;
+    setShown(true);
+    const t = setTimeout(() => setShown(false), 1500);
+    return () => clearTimeout(t);
+  }, [at]);
+  return (
+    <span role="status" className={cn(CAPTION, className)}>
+      <AnimatePresence>
+        {shown && (
+          <motion.span variants={FADE} initial="initial" animate="animate" exit="exit">
+            Saved
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </span>
+  );
+}
+
 /** An edited field, saved when it loses focus (or on Enter for one-line fields). A refused value stays in the field,
- * marked invalid with the reason under it, until it's fixed or Escape puts the saved value back. */
+ * marked invalid with the reason under it, until it's fixed or Escape puts the saved value back. `savedAt` is when it
+ * last saved, for <Saved>. */
 function useField(saved: string, save: (value: string) => Promise<unknown>, required?: string) {
   const [value, setValue] = useState(saved);
   const [error, setError] = useState<string>();
+  const [savedAt, setSavedAt] = useState(0);
   // Escape blurs the field before React has the reverted value, so the blur it causes must not save.
   const reverting = useRef(false);
   useEffect(() => setValue(saved), [saved]);
@@ -53,10 +81,11 @@ function useField(saved: string, save: (value: string) => Promise<unknown>, requ
     const next = value.trim();
     if (next === saved) return setError(undefined);
     if (required && !next) return setError(required);
-    save(next).then(() => setError(undefined), (e: Error) => setError(e.message));
+    save(next).then(() => (setError(undefined), setSavedAt(Date.now())), (e: Error) => setError(e.message));
   };
   return {
     error,
+    savedAt,
     control: {
       value,
       "aria-invalid": error ? true : undefined,
@@ -113,21 +142,24 @@ function Report({ bot, id }: { bot: BotSummary; id: number }) {
           Couldn't open this report: {body.message}
         </p>
       )}
-      {typeof body === "string" && <Markdown className="text-base">{body}</Markdown>}
-      <div className="mt-auto pt-6">
-        {confirming ? (
-          <InlineConfirm
-            question="Delete this report?"
-            action="Delete"
-            onCancel={() => setConfirming(false)}
-            onConfirm={() => deleteReport({ data: { botId: bot.id, id } }).then(() => navigate({ to: "/", search: (s) => ({ ...s, report: undefined }) }), fail("delete report"))}
-          />
-        ) : (
-          <Button variant="ghost" size="sm" className={QUIET} onClick={() => setConfirming(true)}>
-            Delete report
-          </Button>
-        )}
-      </div>
+      {typeof body === "string" && <Markdown className="animate-in fade-in text-base duration-150 ease-out">{body}</Markdown>}
+      <ConfirmSwap
+        className="mt-auto pt-6"
+        confirm={
+          confirming && (
+            <InlineConfirm
+              question="Delete this report?"
+              action="Delete"
+              onCancel={() => setConfirming(false)}
+              onConfirm={() => deleteReport({ data: { botId: bot.id, id } }).then(() => navigate({ to: "/", search: (s) => ({ ...s, report: undefined }) }), fail("delete report"))}
+            />
+          )
+        }
+      >
+        <Button variant="ghost" size="sm" className={QUIET} onClick={() => setConfirming(true)}>
+          Delete report
+        </Button>
+      </ConfirmSwap>
     </div>
   );
 }
@@ -154,8 +186,10 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 pb-6">
-      <div className="flex flex-col items-center gap-2 pt-2">
+      <div className="relative flex flex-col items-center gap-2 pt-2">
         <BotAvatar bot={bot} size="lg" />
+        {/* Beside the face, which takes the new initial: under the name it would push the panel down. */}
+        <Saved at={name.savedAt} className="absolute top-2 left-[calc(50%+2.25rem)] flex h-14 items-center" />
         <Field data-invalid={name.error ? true : undefined} className="gap-1">
           <FieldLabel htmlFor="bot-panel-name" className="sr-only">
             Name
@@ -183,9 +217,12 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
       </div>
 
       <Field data-invalid={instructions.error ? true : undefined}>
-        <FieldLabel htmlFor="bot-panel-instructions" className={CAPTION}>
-          Instructions
-        </FieldLabel>
+        <div className="flex items-baseline justify-between gap-2">
+          <FieldLabel htmlFor="bot-panel-instructions" className={CAPTION}>
+            Instructions
+          </FieldLabel>
+          <Saved at={instructions.savedAt} />
+        </div>
         <Textarea
           id="bot-panel-instructions"
           {...instructions.control}
@@ -209,18 +246,20 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
       {details && details.library.length > 0 && (
         <Section title="Library">
           <ItemGroup className="-mx-2">
-            {details.library.map((r) => (
-              <li key={r.id}>
-                <Item asChild size="sm">
-                  <Link to="/" search={(s) => ({ ...s, report: r.id })}>
-                    <ItemContent>
-                      <ItemTitle>{r.title}</ItemTitle>
-                    </ItemContent>
-                    <Detail>{day(r.createdAt)}</Detail>
-                  </Link>
-                </Item>
-              </li>
-            ))}
+            <AnimatePresence initial={false}>
+              {details.library.map((r) => (
+                <motion.li key={r.id} {...ROW}>
+                  <Item asChild size="sm">
+                    <Link to="/" search={(s) => ({ ...s, report: r.id })}>
+                      <ItemContent>
+                        <ItemTitle>{r.title}</ItemTitle>
+                      </ItemContent>
+                      <Detail>{day(r.createdAt)}</Detail>
+                    </Link>
+                  </Item>
+                </motion.li>
+              ))}
+            </AnimatePresence>
           </ItemGroup>
         </Section>
       )}
@@ -228,16 +267,18 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
       {details && details.tables.length > 0 && (
         <Section title="Data">
           <ItemGroup className="-mx-2">
-            {details.tables.map((t) => (
-              <Item key={t.name} asChild size="sm">
-                <li>
-                  <ItemContent>
-                    <ItemTitle>{t.name}</ItemTitle>
-                  </ItemContent>
-                  <Detail>{`${t.rows.toLocaleString()} ${t.rows === 1 ? "row" : "rows"}`}</Detail>
-                </li>
-              </Item>
-            ))}
+            <AnimatePresence initial={false}>
+              {details.tables.map((t) => (
+                <Item key={t.name} asChild size="sm">
+                  <motion.li {...ROW}>
+                    <ItemContent>
+                      <ItemTitle>{t.name}</ItemTitle>
+                    </ItemContent>
+                    <Detail>{`${t.rows.toLocaleString()} ${t.rows === 1 ? "row" : "rows"}`}</Detail>
+                  </motion.li>
+                </Item>
+              ))}
+            </AnimatePresence>
           </ItemGroup>
         </Section>
       )}
@@ -245,26 +286,32 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
       {bot.agents.length > 0 && (
         <Section title="Helpers">
           <ItemGroup className="-mx-2 gap-0.5">
-            {bot.agents.map((a) =>
-              confirm === `helper:${a.name}` ? (
-                <li key={a.session} className="px-2">
-                  <InlineConfirm question={`Retire ${a.name}?`} action="Retire" onCancel={cancel} onConfirm={() => retireSubagent({ data: { botId: bot.id, name: a.name } }).then(cancel, fail("retire helper"))} />
-                </li>
-              ) : (
-                <li key={a.session} className="group/row flex items-center gap-1">
-                  <Item asChild size="sm" className="flex-1">
-                    <Link to="/" search={(s) => ({ ...s, bot: bot.id, agent: a.session })} aria-label={`Open ${a.name}'s conversation`}>
-                      <ItemContent>
-                        <ItemTitle>{a.name}</ItemTitle>
-                      </ItemContent>
-                    </Link>
-                  </Item>
-                  <Button variant="ghost" size="sm" aria-label={`Retire ${a.name}`} className={cn(QUIET, ON_HOVER, "px-2")} onClick={() => setConfirm(`helper:${a.name}`)}>
-                    Retire
-                  </Button>
-                </li>
-              ),
-            )}
+            <AnimatePresence initial={false}>
+              {bot.agents.map((a) => (
+                <motion.li key={a.session} {...ROW}>
+                  <ConfirmSwap
+                    confirm={
+                      confirm === `helper:${a.name}` && (
+                        <InlineConfirm className="mx-2 w-auto" question={`Retire ${a.name}?`} action="Retire" onCancel={cancel} onConfirm={() => retireSubagent({ data: { botId: bot.id, name: a.name } }).then(cancel, fail("retire helper"))} />
+                      )
+                    }
+                  >
+                    <div className="group/row flex items-center gap-1">
+                      <Item asChild size="sm" className="flex-1">
+                        <Link to="/" search={(s) => ({ ...s, bot: bot.id, agent: a.session })} aria-label={`Open ${a.name}'s conversation`}>
+                          <ItemContent>
+                            <ItemTitle>{a.name}</ItemTitle>
+                          </ItemContent>
+                        </Link>
+                      </Item>
+                      <Button variant="ghost" size="sm" aria-label={`Retire ${a.name}`} className={cn(QUIET, ON_HOVER, "px-2")} onClick={() => setConfirm(`helper:${a.name}`)}>
+                        Retire
+                      </Button>
+                    </div>
+                  </ConfirmSwap>
+                </motion.li>
+              ))}
+            </AnimatePresence>
           </ItemGroup>
         </Section>
       )}
@@ -273,30 +320,33 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
         <Section title="Routines">
           {details.routines.length === 0 && <p className="text-muted-foreground text-sm">None yet. Ask {bot.name} something like “every weekday at 8, check the AI news”.</p>}
           <ItemGroup className="gap-2">
-            {details.routines.map((r) => (
-              <Item key={r.id} asChild variant="card" className="group/row items-start">
-                <li>
-                  <ItemContent>
-                    <ItemTitle>{r.name}</ItemTitle>
-                    <ItemDescription className="text-xs font-medium">{r.enabled ? cronText(r.cron) : `Paused · ${cronText(r.cron)}`}</ItemDescription>
-                    <ItemDescription className="line-clamp-3 pt-1">{r.prompt}</ItemDescription>
-                  </ItemContent>
-                  <ItemActions className="gap-3">
-                    {confirm !== `routine:${r.id}` && (
-                      <Button variant="ghost" size="sm" aria-label={`Delete routine ${r.name}`} className={cn(QUIET, ON_HOVER, "h-5")} onClick={() => setConfirm(`routine:${r.id}`)}>
-                        Delete
-                      </Button>
+            <AnimatePresence initial={false}>
+              {details.routines.map((r) => (
+                <Item key={r.id} asChild variant="card" className="group/row items-start">
+                  <motion.li {...ROW}>
+                    <ItemContent>
+                      <ItemTitle>{r.name}</ItemTitle>
+                      <ItemDescription className="text-xs font-medium">{r.enabled ? cronText(r.cron) : `Paused · ${cronText(r.cron)}`}</ItemDescription>
+                      <ItemDescription className="line-clamp-3 pt-1">{r.prompt}</ItemDescription>
+                    </ItemContent>
+                    <ItemActions className="gap-3">
+                      {confirm !== `routine:${r.id}` && (
+                        <Button variant="ghost" size="sm" aria-label={`Delete routine ${r.name}`} className={cn(QUIET, ON_HOVER, "h-5")} onClick={() => setConfirm(`routine:${r.id}`)}>
+                          Delete
+                        </Button>
+                      )}
+                      <Switch checked={r.enabled} aria-label={`Run ${r.name} on schedule`} onCheckedChange={(on) => setRoutineEnabled({ data: { botId: bot.id, id: r.id, enabled: on } }).catch(fail("change routine"))} />
+                    </ItemActions>
+                    {/* A line of its own under the card (Delete, beside the switch, is too small to hold it), so it fades in. */}
+                    {confirm === `routine:${r.id}` && (
+                      <ItemFooter className="animate-in fade-in duration-150 ease-out">
+                        <InlineConfirm className="w-full" question={`Delete ${r.name}?`} action="Delete" onCancel={cancel} onConfirm={() => deleteRoutine({ data: { botId: bot.id, id: r.id } }).then(cancel, fail("delete routine"))} />
+                      </ItemFooter>
                     )}
-                    <Switch checked={r.enabled} aria-label={`Run ${r.name} on schedule`} onCheckedChange={(on) => setRoutineEnabled({ data: { botId: bot.id, id: r.id, enabled: on } }).catch(fail("change routine"))} />
-                  </ItemActions>
-                  {confirm === `routine:${r.id}` && (
-                    <ItemFooter>
-                      <InlineConfirm className="w-full" question={`Delete ${r.name}?`} action="Delete" onCancel={cancel} onConfirm={() => deleteRoutine({ data: { botId: bot.id, id: r.id } }).then(cancel, fail("delete routine"))} />
-                    </ItemFooter>
-                  )}
-                </li>
-              </Item>
-            ))}
+                  </motion.li>
+                </Item>
+              ))}
+            </AnimatePresence>
           </ItemGroup>
         </Section>
       )}
@@ -314,27 +364,23 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
             <dt>Summarizing</dt>
             <dd className="text-foreground text-right">{memory.building + memory.pending === 0 ? "Up to date" : `${memory.building} now, ${memory.pending} waiting`}</dd>
           </dl>
-          {confirm === "reset" ? (
-            <InlineConfirm question="Forget everything it remembers?" action="Forget" onCancel={cancel} onConfirm={() => resetMemory({ data: bot.id }).then(cancel, fail("reset memory"))} />
-          ) : (
+          <ConfirmSwap confirm={confirm === "reset" && <InlineConfirm question="Forget everything it remembers?" action="Forget" onCancel={cancel} onConfirm={() => resetMemory({ data: bot.id }).then(cancel, fail("reset memory"))} />}>
             <Button variant="ghost" size="sm" className={QUIET} onClick={() => setConfirm("reset")}>
               Reset memory
             </Button>
-          )}
+          </ConfirmSwap>
         </Section>
       )}
 
-      <div className="mt-auto pt-6">
-        {main ? (
-          <p className="text-muted-foreground text-sm">Make another bot main to delete {bot.name}.</p>
-        ) : confirm === "delete" ? (
-          <InlineConfirm question={`Delete ${bot.name} for good?`} action="Delete" onCancel={cancel} onConfirm={() => deleteBot({ data: bot.id }).then(onDeleted, fail("delete bot"))} />
-        ) : (
+      {main ? (
+        <p className="text-muted-foreground mt-auto pt-6 text-sm">Make another bot main to delete {bot.name}.</p>
+      ) : (
+        <ConfirmSwap className="mt-auto pt-6" confirm={confirm === "delete" && <InlineConfirm question={`Delete ${bot.name} for good?`} action="Delete" onCancel={cancel} onConfirm={() => deleteBot({ data: bot.id }).then(onDeleted, fail("delete bot"))} />}>
           <Button variant="ghost" size="sm" className={QUIET} onClick={() => setConfirm("delete")}>
             Delete {bot.name}
           </Button>
-        )}
-      </div>
+        </ConfirmSwap>
+      )}
     </div>
   );
 }
