@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
 import { Input } from "@/components/ui/input";
 import { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
@@ -8,21 +8,29 @@ import { cn, fail } from "@/lib/utils";
 import { searchMessages } from "@/server/fns";
 import { MATCH_CLOSE, MATCH_OPEN, type BotSummary, type SearchHit } from "@/shared";
 
-/** Renders an FTS5 snippet with its matches highlighted. */
+const TOKEN = /(\*\*|\*|`|\u0002|\u0003)/;
+const BLOCK = /^[ \t]*(?:#{1,6}[ \t]+|[-*+][ \t]+|\d+\.[ \t]+|>[ \t]*|\|?[ \t]*:?-{3,}[-:| \t]*$)/gm;
+
+/** Renders an FTS5 snippet as inline markdown (bold, italic, code; links as their label; blocks flattened to text) with
+ * its matches highlighted. A snippet cuts the text anywhere, so a delimiter opens only if a partner follows it:
+ * unpaired ones are dropped, which is simpler than guessing what the cut-off half was. */
 function Snippet({ text }: { text: string }) {
-  return (
-    <>
-      {text.split(MATCH_OPEN).map((chunk, i) => {
-        const [match, rest] = i === 0 ? ["", chunk] : chunk.split(MATCH_CLOSE);
-        return (
-          <Fragment key={i}>
-            {match && <mark className="bg-highlight text-foreground rounded-sm">{match}</mark>}
-            {rest}
-          </Fragment>
-        );
-      })}
-    </>
-  );
+  const tokens = text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(BLOCK, "").replace(/\s*\n\s*/g, " ").split(TOKEN);
+  const on: Record<string, boolean> = {};
+  return tokens.map((t, i) => {
+    if (i % 2 === 0 || (on["`"] && t !== "`" && t !== MATCH_OPEN && t !== MATCH_CLOSE)) {
+      // Text, or a `*` inside code, which is literal.
+      let node: ReactNode = t;
+      if (on["`"]) node = <code className="bg-muted rounded-sm px-1 py-0.5 font-mono text-[0.86em]">{node}</code>;
+      if (on["*"]) node = <em>{node}</em>;
+      if (on["**"]) node = <strong className="font-semibold">{node}</strong>;
+      if (on[MATCH_OPEN]) node = <mark className="bg-highlight text-foreground rounded-sm">{node}</mark>;
+      return t && <Fragment key={i}>{node}</Fragment>;
+    }
+    // Marks always toggle; a markdown delimiter only opens if the same one follows.
+    on[t === MATCH_CLOSE ? MATCH_OPEN : t] = t === MATCH_CLOSE ? false : !on[t] && (t === MATCH_OPEN || tokens.includes(t, i + 1));
+    return null;
+  });
 }
 
 /** The shape of a few hits while a search runs: a face, a name, two lines of snippet. */
