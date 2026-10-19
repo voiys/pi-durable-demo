@@ -126,7 +126,7 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
 
 ### Rail
 - Canvas fill, no border (the color step is the edge). Bots as their 36px faces, which turn their heads toward the
-  pointer wherever it is (bloub `follow`; idle only, not under reduced motion), main bot first with an 8px gap +
+  pointer wherever it is (a gaze script aimed straight at it; bloub's own `follow` biases the head 26° left), not under reduced motion), main bot first with an 8px gap +
   hairline. Groups after another hairline: a 36px muted tile holding up to three member faces.
 - **Glance layer (required):** a working bot's face becomes bloub's thinking dots (still dots under reduced motion);
   unread shows a 8px blue dot top-right. Tooltip = name + one-line status ("Reading 3 pages…").
