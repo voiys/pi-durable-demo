@@ -307,8 +307,9 @@ function App() {
             transition={{ duration: 0.2, ease: [0.2, 0, 0, 1] }}
             className="bg-canvas flex w-80 shrink-0 flex-col max-md:w-auto max-md:min-w-0 max-md:flex-1"
           >
-            <div className="flex h-12 shrink-0 items-center justify-between pr-2 pl-4">
-              <h2 className="text-sm font-medium">{search.panel === "search" ? "Search" : "Details"}</h2>
+            {/* The title starts on the panel's text edge (16px gutter + 12px row inset, src/components/panel.tsx). */}
+            <div className="flex h-12 shrink-0 items-center justify-between pr-2 pl-7">
+              <h2 className="text-sm font-semibold">{search.panel === "search" ? "Search" : "Details"}</h2>
               <Button variant="ghost" size="icon-sm" aria-label="Close panel" className="text-muted-foreground hover:text-foreground rounded-full" onClick={() => navigate({ search: (s) => ({ ...s, panel: undefined, report: undefined }) })}>
                 <X />
               </Button>

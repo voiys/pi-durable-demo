@@ -106,7 +106,7 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   rgb(0 0 0/.08)`; composer `0 1px 2px rgb(0 0 0/.06), 0 0 0 0.5px var(--hairline)`. Dark: hairline inset
   `0 0 0 1px rgb(255 255 255/.06) inset` instead of drop shadows (Linear).
 - **Layout:** rail 64px · thread max 720px centered · panel 320px · below 768px the panel replaces the thread.
-- **Controls (src/components/ui):** heights 24/28/32/36 (buttons, toggles), inputs 36; menu and list rows 32 min. Hover
+- **Controls (src/components/ui):** heights 24/28/32/36 (buttons, toggles), inputs 36; menu and list rows 32 min, side panel rows 44. Hover
   is the translucent `--accent` fill on every surface; a selected toggle is ink (`--foreground`), never blue. Focus is a
   2px `--ring` outline 2px off the edge; rows in scrolling lists draw it 2px inside; inputs turn their border ring-color
   and add a 1px outline. Neutral fills (secondary buttons, chips) are `--muted`, as the incoming bubble is.
@@ -148,7 +148,8 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   messages; the bot is told to say one short line before longer work. Between a run's steps the activity line says
   "Thinking…" again, so the thread never looks idle while the bot works.
 - **Replies and quotes:** "Reply" (caption, muted) beside a bubble on hover, keyboard focus or long press; "Quote" floats
-  over text selected in a bubble. Each puts a chip over the composer (sender, one line, ×). Your bubble shows its quotes
+  over text selected in a bubble, and ⌘L (Ctrl+L off Mac) does the same, or with nothing selected moves to the composer.
+  Each puts a quote pill inline in the composer (see Composer). Your bubble shows its quotes
   as excerpts on top: a 2px rule in the bubble's ink, sender caption, two lines. One quote format everywhere:
   "> <sender> said:" lines, then a blank line, then your words. In groups, Reply sends the message id and the room
   quotes it for the bots; replying to a bot's message reaches that bot.
@@ -164,10 +165,31 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
 - Floating pill on the thread canvas: 44px min height, pill radius, composer shadow, 15px text. Left: model brain (24px
   ghost). Right: send — 28px blue circle with a white up-arrow, appears enabled only with text; while running it becomes
   a stop square in `--muted`.
+- **Quote pills** sit inline before the draft, in one wrapping row with it (Grok Bot): a 24px `--muted` pill with the
+  sender (13/510), an excerpt in curly quotes cut to 24 characters (13/400, full ink: muted gray on `--muted` is 4.15:1),
+  the whole quote as its tooltip, and a 24px round × ("Remove quote from Scout") flush in its end. The draft takes the
+  rest of the row and drops to its own line under 8rem; its 1px pad makes its line the pills' 24px, so the one-line
+  composer stays 44px. Backspace in an empty draft drops the last pill. Tab: brain, each ×, draft, send. With no quotes
+  nothing renders (no empty list for screen readers).
+- **"Quote ⌘L"** floats over a selection: popover fill, solid `--muted` on hover; the `<kbd>` hint is caption gray,
+  ink on hover, hidden from screen readers (the button carries `aria-keyshortcuts`).
 
 ### Side panel
-- Canvas fill, 320px, sections separated by 24px space (no rules), section titles caption/510 uppercase-free, sentence
-  case. Destructive actions last, ghost, red only on hover + inline confirm.
+- Inset grouped lists (iOS/macOS Settings at Linear's precision; primitives in `src/components/panel.tsx`). Canvas fill,
+  320px, 16px gutter, a 48px header whose title (13/590) sits on the text edge. Each group: a caption title (11/510,
+  muted, sentence case) over a surface card (12px radius, hairline edge), an optional caption footnote; groups 24px
+  apart, flowing top-down with no pinned footer. Rows: 44px min, 12px inset, label 13/400 leading, value muted trailing
+  (`tabular-nums`), hairline dividers inset to the text edge (past the face on rows with one). One text edge for
+  everything: gutter + row inset (28px from the panel edge).
+- Identity first: a card with the 48px face, the name edited in place (17/590, no box until hover or focus) and one muted
+  line (role, member count, or the name's error) with "Saved" at its end. Long text fields (instructions, what a group
+  is for) are the card itself: an auto-growing textarea with no box until focus, the focus ring drawn inside the card.
+- Empty groups are left out, except Routines, which says how to add one. Role and destructive actions are the last
+  group, as ink row buttons that turn red only on hover, then ask inline in the row (same 44px; `DangerRow`). A main
+  bot has no such card: a footnote says why it can't be deleted. Footnotes and sentences standing in for a group are
+  11/400 (prose, not labels), on the text edge. Routines show their whole prompt (it is the routine), the schedule as a
+  caption under the name, the switch trailing; their Delete is a 32px hover-revealed text button that asks under the
+  routine. Row actions revealed on hover also show on keyboard focus and always on touch screens.
 
 ### Empty states
 - Title 22/590, one sentence 15px secondary, one primary action. For a new bot: its avatar large (56px), name, and three
@@ -201,7 +223,7 @@ State swaps use `initial={false}`, and history, panel lists and the rail on load
 | Active ring | always 2px, color only, 150ms |
 | Panel open | opacity + x 8→0, 200ms `cubic-bezier(0.2,0,0,1)`; the thread takes its width at once; closes at once |
 | Panel sections, report text, search hits | opacity 150ms on mount (replacing the skeleton) |
-| Panel list rows, inline confirm swap | opacity 150ms in, 100ms out (`ROW`); trigger and confirm share 32px so nothing jumps |
+| Panel list rows, inline confirm swap | opacity 150ms in, 100ms out (`ROW`); trigger row and confirm share 44px (32px confirm + 6px pad) so nothing jumps |
 | "Saved" caption | `FADE`, shown 1.5s after a field saves; the status region stays mounted |
 | Menus, popover, tooltip, hover card | opacity + zoom 0.96→1 + 4px from the trigger side, 150ms in, 100ms out |
 | Empty states, new bot, new group, empty-thread suggestions | chunks 100ms apart, each `SLIDE_UP` (`SETTLE`) |

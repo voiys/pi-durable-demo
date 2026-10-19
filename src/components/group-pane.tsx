@@ -4,9 +4,8 @@ import { Fragment, useRef, useState } from "react";
 import { Markdown } from "@/components/ai/markdown";
 import type { Sender } from "@/components/ai/agents-message";
 import { BotAvatar } from "@/components/bot-avatar";
-import { ConfirmSwap, InlineConfirm, QUIET } from "@/components/inline-confirm";
 import { breaksTime, Composer, HeaderBar, Said, Status, Thread, ThreadEmpty, ThreadItem, ThreadRow, ThreadSkeleton, TimeDivider, WorkingRow, YourSaid } from "@/components/bot-pane";
-import { CAPTION, Saved, useField } from "@/components/bot-panel";
+import { BARE, CARD, CELL, DangerRow, Group, Identity, LINE, NAME, PanelBody, Saved, TAP, useField } from "@/components/panel";
 import { QuoteProvider } from "@/components/quotes";
 import { Button } from "@/components/ui/button";
 import { EmptyHeader } from "@/components/ui/empty";
@@ -14,15 +13,15 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegen
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Item, ItemContent, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SETTLE, SettleEmpty, SLIDE_UP, useCalm } from "@/lib/motion";
 import { cn, fail } from "@/lib/utils";
 import { createGroup, disbandGroup, postToGroup, updateGroup } from "@/server/fns";
 import { botObjectName, type BotSummary, type GroupState, type GroupSummary } from "@/shared";
 
-/** A few member faces, overlapped: `md` stacks them in a 36px tile for the rail, `sm` and `lg` line them up. */
-export function GroupAvatar({ members, size = "md" }: { members: Pick<BotSummary, "name" | "color">[]; size?: "sm" | "md" | "lg" }) {
+/** A few member faces, overlapped: `md` stacks them in a 36px tile for the rail, `sm` and `lg` line them up. `face`
+ * restyles each face in a line (its size, and a ring in the color of the surface behind it). */
+export function GroupAvatar({ members, size = "md", face }: { members: Pick<BotSummary, "name" | "color">[]; size?: "sm" | "md" | "lg"; face?: string }) {
   const shown = members.slice(0, 3);
   if (size === "md")
     return (
@@ -36,7 +35,7 @@ export function GroupAvatar({ members, size = "md" }: { members: Pick<BotSummary
   return (
     <span aria-hidden className={cn("flex", size === "sm" ? "*:not-first:-ml-1.5" : "*:not-first:-ml-3")}>
       {shown.map((m, i) => (
-        <BotAvatar key={i} bot={m} size="sm" className={cn("ring-background rounded-full ring-2", size === "lg" && "size-14 text-2xl")} />
+        <BotAvatar key={i} bot={m} size="sm" className={cn("ring-background rounded-full ring-2", size === "lg" && "size-14 text-2xl", face)} />
       ))}
     </span>
   );
@@ -197,98 +196,93 @@ export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (
 }
 
 /** What a group is for, edited in place and saved when it loses focus (as a bot's instructions are). */
-function PurposeField({ groupId, purpose }: { groupId: string; purpose: string }) {
+function PurposeGroup({ groupId, purpose }: { groupId: string; purpose: string }) {
   const field = useField(purpose, (v) => updateGroup({ data: { groupId, purpose: v } }));
   return (
-    <Field data-invalid={field.error ? true : undefined}>
-      <div className="flex items-baseline justify-between gap-2">
-        <FieldLabel htmlFor="group-panel-purpose" className={CAPTION}>
-          What it's for
-        </FieldLabel>
-        <Saved at={field.savedAt} />
+    <Group title="What it's for" id="group-panel-purpose-title" aside={<Saved at={field.savedAt} />} footer={field.error && <FieldError id="group-panel-purpose-error">{field.error}</FieldError>}>
+      <div className={CARD}>
+        <Textarea
+          {...field.control}
+          aria-labelledby="group-panel-purpose-title"
+          aria-describedby={field.error ? "group-panel-purpose-error" : undefined}
+          placeholder="The goal, and who owns what. Every bot here reads it."
+          className={cn(BARE, "max-h-80")}
+        />
       </div>
-      <Textarea
-        id="group-panel-purpose"
-        {...field.control}
-        aria-describedby={field.error ? "group-panel-purpose-error" : undefined}
-        placeholder="The goal, and who owns what. Every bot here reads it."
-        rows={4}
-        className="bg-surface max-h-72 md:text-sm"
-      />
-      <FieldError id="group-panel-purpose-error">{field.error}</FieldError>
-    </Field>
+    </Group>
   );
 }
 
-/** A group's details, inline beside it: its name and what it's for (both edited in place), who's in it, and disbanding
- * it when the work is done. */
+/** A group's details, inline beside it, as grouped lists: its name and what it's for (both edited in place), who's in
+ * it, and disbanding it when the work is done. */
 export function GroupPanel({ userId, group, bots, onDisbanded }: { userId: string; group: GroupSummary; bots: BotSummary[]; onDisbanded: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const state = useRoom(userId, group.id);
   const title = useField(group.title, (v) => updateGroup({ data: { groupId: group.id, title: v } }), "Give it a name.");
   const members = group.members.flatMap((id) => bots.filter((b) => b.id === id));
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-4">
-      <div className="relative flex flex-col items-center gap-2 text-center">
-        <GroupAvatar members={members} size="lg" />
-        <Saved at={title.savedAt} className="absolute top-0 right-0 flex h-14 items-center" />
-        <Field data-invalid={title.error ? true : undefined} className="gap-1">
-          <FieldLabel htmlFor="group-panel-title" className="sr-only">
-            Name
-          </FieldLabel>
-          <Input
-            id="group-panel-title"
-            {...title.control}
-            onKeyDown={(e) => (e.key === "Enter" ? e.currentTarget.blur() : title.control.onKeyDown(e))}
-            aria-describedby={title.error ? "group-panel-title-error" : undefined}
-            maxLength={60}
-            autoComplete="off"
-            className="hover:border-input focus-visible:bg-surface border-transparent text-center text-lg font-semibold md:text-lg"
-          />
-          <FieldError id="group-panel-title-error" className="text-center">
-            {title.error}
-          </FieldError>
-        </Field>
-        <span className="text-muted-foreground text-sm">{members.length === 1 ? "1 bot" : `${members.length} bots`}</span>
-      </div>
+    <PanelBody>
+      <Identity
+        face={<GroupAvatar members={members} size="lg" face="ring-surface size-9 text-base" />}
+        name={
+          <>
+            <label htmlFor="group-panel-title" className="sr-only">
+              Name
+            </label>
+            <Input
+              id="group-panel-title"
+              {...title.control}
+              onKeyDown={(e) => (e.key === "Enter" ? e.currentTarget.blur() : title.control.onKeyDown(e))}
+              aria-describedby={title.error ? "group-panel-title-error" : undefined}
+              maxLength={60}
+              autoComplete="off"
+              className={NAME}
+            />
+          </>
+        }
+        line={
+          <>
+            {title.error ? <FieldError id="group-panel-title-error">{title.error}</FieldError> : <p className="text-muted-foreground text-sm">{members.length === 1 ? "1 bot" : `${members.length} bots`}</p>}
+            <Saved at={title.savedAt} />
+          </>
+        }
+      />
       {state ? (
-        <PurposeField groupId={group.id} purpose={state.purpose} />
+        <PurposeGroup groupId={group.id} purpose={state.purpose} />
       ) : (
-        <div role="status" className="flex flex-col gap-3">
+        <div role="status" className="flex flex-col gap-1.5">
           <span className="sr-only">Loading what it's for…</span>
-          <Skeleton aria-hidden className="h-3 w-16" />
-          <Skeleton aria-hidden className="h-24 rounded-lg" />
+          <Skeleton aria-hidden className="mx-3 h-3 w-20" />
+          <div aria-hidden className={cn(CARD, "flex flex-col gap-2.5 px-3 py-3.5")}>
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-3/5" />
+          </div>
         </div>
       )}
-      <section aria-labelledby="group-members-title" className="flex flex-col gap-2">
-        <h3 id="group-members-title" className="text-muted-foreground text-xs font-medium">
-          Members
-        </h3>
-        <ItemGroup className="-mx-2">
+      <Group title="Members">
+        <ul className={CARD}>
           {members.map((b) => (
-            <li key={b.id}>
-              <Item asChild size="sm">
-                <Link to="/" search={{ bot: b.id }}>
-                  <ItemMedia>
-                    <BotAvatar bot={b} size="sm" className="rounded-full" />
-                  </ItemMedia>
-                  <ItemContent>
-                    <ItemTitle>{b.name}</ItemTitle>
-                  </ItemContent>
-                </Link>
-              </Item>
+            <li key={b.id} className={cn(LINE, "not-first:before:left-11")}>
+              <Link to="/" search={{ bot: b.id }} className={cn(CELL, TAP)}>
+                <BotAvatar bot={b} size="sm" className="rounded-full" />
+                <span className="min-w-0 break-words">{b.name}</span>
+              </Link>
             </li>
           ))}
-        </ItemGroup>
-      </section>
-      <div className="mt-auto flex flex-col gap-2">
-        <p className="text-muted-foreground text-sm">Disbanding deletes this room. Each bot keeps what it saw here in its own memory.</p>
-        <ConfirmSwap confirm={confirming && <InlineConfirm question={`Disband ${group.title}?`} action="Disband" onCancel={() => setConfirming(false)} onConfirm={() => disbandGroup({ data: group.id }).then(onDisbanded, fail("disband group"))} />}>
-          <Button variant="ghost" size="sm" className={QUIET} onClick={() => setConfirming(true)}>
-            Disband group
-          </Button>
-        </ConfirmSwap>
-      </div>
-    </div>
+        </ul>
+      </Group>
+      <Group footer="Disbanding deletes this room. Each bot keeps what it saw here in its own memory.">
+        <DangerRow
+          className={CARD}
+          label="Disband group"
+          question={`Disband ${group.title}?`}
+          action="Disband"
+          asking={confirming}
+          onAsk={() => setConfirming(true)}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => disbandGroup({ data: group.id }).then(onDisbanded, fail("disband group"))}
+        />
+      </Group>
+    </PanelBody>
   );
 }
