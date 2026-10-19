@@ -295,9 +295,12 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
         send();
       }}
     >
-      <QuoteChips />
       {/* 22px is the pill at the 44px one-line height; it stays that radius as the draft grows. */}
-      <InputGroup className="bg-background shadow-composer min-h-11 items-end rounded-[22px] border-transparent">
+      <InputGroup className="bg-background shadow-composer min-h-11 flex-wrap items-end rounded-[22px] border-transparent">
+        {/* Replies sit inside the composer, above the draft, as in Grok Bot. */}
+        <div className="order-first w-full px-4 pt-2 empty:hidden">
+          <QuoteChips />
+        </div>
         {tools && (
           <InputGroupAddon align="inline-start" className="py-2.5 pl-2 has-[>button]:ml-0 [&>button]:size-6 [&>button]:rounded-full">
             {tools}

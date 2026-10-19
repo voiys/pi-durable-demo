@@ -76,20 +76,24 @@ export function QuoteBlock({ sender, text }: { sender?: string; text: string }) 
 }
 
 /** The chips over the composer: who, one line of what, and × to drop it. */
+/** Markdown as one line of plain words, for an excerpt. */
+const plain = (text: string) => text.replace(/```[\s\S]*?```/g, " ").replace(/[*_`~#>|]+/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/\s+/g, " ").trim();
+
+/** What you're replying to, as the composer's top rows (Grok Bot): who, a one-line excerpt in quotes, and Cancel reply. */
 export function QuoteChips() {
   const { quotes, remove } = useQuotes();
   if (!quotes.length) return null;
   return (
-    <ul aria-label="Quoting" className="flex flex-col gap-1 px-1 pb-1.5">
+    <ul aria-label="Replying to" className="flex w-full flex-col">
       {quotes.map((q) => (
-        <li key={`${q.sender}:${q.text}`} className="bg-muted animate-in fade-in flex h-8 min-w-0 items-center gap-2 rounded-md pr-1 pl-2.5 text-sm duration-150">
+        <li key={`${q.sender}:${q.text}`} className="animate-in fade-in flex h-7 min-w-0 items-center gap-1.5 text-sm duration-150">
           <span className="shrink-0 font-medium">{q.sender}</span>
-          <span className="text-muted-foreground min-w-0 flex-1 truncate">{q.text.replaceAll("\n", " ")}</span>
+          <span className="text-muted-foreground min-w-0 flex-1 truncate">“{plain(q.text)}”</span>
           <button
             type="button"
-            aria-label={`Remove quote from ${q.sender}`}
+            aria-label={`Cancel reply to ${q.sender}`}
             onClick={() => remove(q)}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent flex size-6 shrink-0 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-2"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent flex size-6 shrink-0 items-center justify-center rounded-full transition-colors duration-150 focus-visible:outline-2"
           >
             <X className="size-3.5" />
           </button>
@@ -99,7 +103,6 @@ export function QuoteChips() {
   );
 }
 
-/** A message you can reply to: "Reply" beside its bubble on hover, keyboard focus, or a long press (touch). */
 export function Replyable({ quote, mine, children }: { quote: Quote; mine: boolean; children: ReactNode }) {
   const { add } = useQuotes();
   const [shown, setShown] = useState(false);
