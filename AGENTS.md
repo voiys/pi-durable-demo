@@ -16,3 +16,4 @@ Before you write code against any of these libs (cloudflare agents sdk incl. PiH
 ## Layout
 
 - `AGENTS.md` this file. `DECISIONS.md` decisions made without asking. `RESEARCH.md` cited research. `PLAN.md` slices.
+- `DESIGN.md` the design system (tokens, components, motion, words). Read it before any UI change; it overrides shadcn defaults and taste. `research/ui-decisions.md` holds the user's locked UI calls.
