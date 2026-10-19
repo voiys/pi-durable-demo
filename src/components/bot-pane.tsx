@@ -266,10 +266,12 @@ export function Thread({ busy = false, children }: { busy?: boolean; children: R
 /** The floating pill composer (DESIGN.md §6, AI Elements prompt-input on InputGroup): the model brain on the left, a
  * blue send circle on the right that wakes up with text, a stop square while the bot works and nothing is typed. Send
  * and stop are one button, so its fill changes color (150ms) and its icon cross-fades (better-ui icon-transitions).
- * `onStop` is set while there is work to stop. Enter sends (queued behind running work), Shift+Enter is a new line. */
+ * `onStop` is set while there is work to stop. Enter sends (queued behind running work), Shift+Enter is a new line.
+ * Quotes sit inline before the draft as pills (Grok Bot); the draft takes the rest of their row, or the next one when
+ * under 8rem is left; Backspace in an empty draft drops the last pill. */
 export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend: (text: string, replyTo?: string) => void; ready: boolean; onStop?: () => void; placeholder: string; tools?: ReactNode }) {
   const [draft, setDraft] = useState("");
-  const { quotes, clear, input } = useQuotes();
+  const { quotes, remove, clear, input } = useQuotes();
   const typed = draft.trim() !== "";
   const stop = onStop !== undefined && !typed;
   const icon = useCalm(ICON);
@@ -289,32 +291,33 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
       }}
     >
       {/* 22px is the pill at the 44px one-line height; it stays that radius as the draft grows. */}
-      <InputGroup className="bg-background shadow-composer min-h-11 flex-wrap items-end rounded-[22px] border-transparent">
-        {/* Replies sit inside the composer, above the draft, as in Grok Bot. */}
-        <div className="order-first w-full px-4 pt-2 empty:hidden">
-          <QuoteChips />
-        </div>
+      <InputGroup className="bg-background shadow-composer h-auto min-h-11 items-end rounded-[22px] border-transparent">
         {tools && (
           <InputGroupAddon align="inline-start" className="py-2.5 pl-2 has-[>button]:ml-0 [&>button]:size-6 [&>button]:rounded-full">
             {tools}
           </InputGroupAddon>
         )}
-        <InputGroupTextarea
-          ref={input}
-          value={draft}
-          autoFocus
-          rows={1}
-          placeholder={placeholder}
-          aria-label="Message"
-          className={cn("placeholder:text-faint max-h-48 min-h-0 py-2.5", tools ? "pl-1.5" : "pl-4")}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
+        {/* Clicks on the row's padding land in the draft. A 1px pad makes the draft's line the pills' 24px. */}
+        <div className={cn("flex min-w-0 flex-1 cursor-text flex-wrap items-start gap-1 py-2.5 pr-2.5", tools ? "pl-1.5" : "pl-4")} onClick={(e) => e.target === e.currentTarget && input.current!.focus()}>
+          <QuoteChips />
+          <InputGroupTextarea
+            ref={input}
+            value={draft}
+            autoFocus
+            rows={1}
+            placeholder={placeholder}
+            aria-label="Message"
+            className="placeholder:text-faint max-h-48 min-h-0 min-w-0 basis-32 px-0 py-px"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Backspace" && draft === "" && quotes.length) remove(quotes.at(-1)!);
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+        </div>
         <InputGroupAddon align="inline-end" className="py-2 pr-2 has-[>button]:mr-0">
           <InputGroupButton
             type={stop ? "button" : "submit"}
