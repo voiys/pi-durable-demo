@@ -518,8 +518,7 @@ export class Bot extends DurableObject<Env> {
 
   /** What the details panel shows. */
   async details(): Promise<BotDetails> {
-    const data = this.#data();
-    const [library, tables] = await Promise.all([data.library(), data.tables()]);
+    const [library, tables] = await Promise.all([this.#data().library(), this.#data().tables()]);
     return { memory: this.#stats(), routines: this.#routines(), library: library.map((r) => ({ ...r })), tables: tables.map((t) => ({ ...t })) };
   }
 

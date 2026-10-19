@@ -51,7 +51,7 @@ const botDataFiles = () => sqliteFiles().filter((f) => kindOf(f) === "BotData");
 const groupFiles = () => sqliteFiles().filter((f) => kindOf(f) === "Group");
 let victimGroup: string | undefined; // A's throwaway group, disbanded in finally
 /** Fns that reach a bot's BotData DO or the main-bot flag: refused by the owner check itself, so exactly 403 (B) / 401 (anon). */
-const OWNER_CHECKED = new Set(["setMainBot", "readReport", "deleteReport", "postToGroup", "disbandGroup"]);
+const OWNER_CHECKED = new Set(["markSeen", "setMainBot", "readReport", "deleteReport", "postToGroup", "disbandGroup"]);
 
 try {
   const victim = await make(A, "iso-victim", `Private instructions of A ${tag}`);
@@ -163,6 +163,7 @@ try {
     ["deleteBot", "POST", id],
     ["setBotModel", "POST", { botId: id, model: "x", thinkingLevel: "low" }],
     ["botDetails", "GET", id],
+    ["markSeen", "POST", id],
     ["setMainBot", "POST", id],
     ["readReport", "GET", { botId: id, id: 1 }],
     ["deleteReport", "POST", { botId: id, id: 1 }],

@@ -118,7 +118,6 @@ const RPC_RES: [RegExp, number, number | string][] = [
   [/\(await user\(\)\)\.(\w+)\(/g, 1, "User"],
   [/\(await bot\([^()]*\)\)\.(\w+)\(/g, 1, "Bot"],
   [/#data\(\)\.(\w+)\(/g, 1, "BotData"],
-  [/\bdata\.(\w+)\(/g, 1, "BotData"], // Bot.details(): `const data = this.#data()`
   [/#group\([^()]*\)\.(\w+)\(/g, 1, "Group"],
   [/\(await group\([^()]*\)\)\.room\.(\w+)\(/g, 1, "Group"],
   [/\(await group\([^()]*\)\)\.user\.(\w+)\(/g, 1, "User"],
