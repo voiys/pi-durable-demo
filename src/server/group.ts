@@ -81,7 +81,13 @@ export class Group extends Agent<Env, GroupState> {
     this.#post({ from: botId, text });
   }
 
-  /** A member bot's answer to what it heard (`null` when it had nothing to add). */
+  /** A member bot started one of its routines for this room: it shows as typing until its answer (botReply). */
+  botWorking(botId: string) {
+    if (!this.state.members.some((m) => m.id === botId)) throw new Error(`${botId} is not in this group`);
+    this.setState({ ...this.state, typing: [...new Set([...this.state.typing, botId])] });
+  }
+
+  /** A member bot's answer to what it heard or to its own routine (`null` when it had nothing to add). */
   botReply(botId: string, text: string | null) {
     const member = this.state.members.find((m) => m.id === botId);
     if (!member) throw new Error(`${botId} is not in this group`);

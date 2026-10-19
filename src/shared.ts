@@ -24,7 +24,8 @@ export type IndexRow = { entryId: string; role: "user" | "assistant"; text: stri
 export const VIEW_BUDGETS = [2_000, 4_000, 8_000, 16_000, 32_000, 64_000, 128_000] as const;
 export type MemoryStats = { entries: number; nodes: number; lines: number; viewBytes: number; budget: number; pending: number; building: number };
 /** A prompt the bot gets on a cron schedule, in its own conversation. */
-export type Routine = { id: string; name: string; prompt: string; cron: string; enabled: boolean };
+/** `group`: the group chat it runs in and posts to (made there), or null for the bot's own chat. */
+export type Routine = { id: string; name: string; prompt: string; cron: string; enabled: boolean; group: string | null };
 /** A report the bot saved to its library (BotData DO). */
 export type LibraryItem = { id: number; title: string; createdAt: number };
 /** What a bot's details panel shows, read from its Bot DO and BotData DO. */

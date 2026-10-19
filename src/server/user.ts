@@ -196,9 +196,12 @@ export class User extends Agent<Env, UserState> {
     this.#publish();
   }
 
-  /** Deletes the room and its transcript. Each member keeps what it remembers of it (its own memory). */
+  /** Deletes the room and its transcript, and its members' routines for it. Each member keeps what it remembers of it
+   * (its own memory). */
   async disbandGroup(groupId: string) {
-    if (!this.hasGroup(groupId)) throw new Error(`Unknown group ${groupId}`);
+    const group = this.state.groups.find((g) => g.id === groupId);
+    if (!group) throw new Error(`Unknown group ${groupId}`);
+    for (const botId of group.members) await this.env.Bot.getByName(botObjectName(this.name, botId)).leaveGroup(groupId);
     await this.env.Group.getByName(botObjectName(this.name, groupId)).wipe();
     this.sql`DELETE FROM groups WHERE id = ${groupId}`;
     this.#publish();

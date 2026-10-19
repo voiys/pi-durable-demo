@@ -18,11 +18,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { ROW } from "@/lib/motion";
 import { cn, fail } from "@/lib/utils";
 import { botDetails, deleteBot, deleteReport, deleteRoutine, readReport, resetMemory, retireSubagent, setMainBot, setMemoryBudget, setRoutineEnabled, updateBot } from "@/server/fns";
-import { VIEW_BUDGETS, type BotDetails, type BotSummary } from "@/shared";
+import { VIEW_BUDGETS, type BotDetails, type BotSummary, type GroupSummary } from "@/shared";
 
 const kb = (n: number) => `${Math.round(n / 1000)}K`;
 const day = (ts: number) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
-const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+export const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The panel's shape while its first read is on the way: two groups of rows. */
 function DetailsSkeleton() {
@@ -89,7 +89,8 @@ function Report({ bot, id }: { bot: BotSummary; id: number }) {
 
 /** A bot's details, inline beside its conversation, as grouped lists: who it is, its instructions, library and data,
  * helpers, routines, memory, then its role. Polls while open. `report` opens one report in place of the details. */
-export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; main: boolean; report?: number; onDeleted: () => void }) {
+/** `groups`: the user's groups, to name the room a group routine posts to. */
+export function BotPanel({ bot, main, groups, report, onDeleted }: { bot: BotSummary; main: boolean; groups: GroupSummary[]; report?: number; onDeleted: () => void }) {
   const [details, setDetails] = useState<BotDetails | null>(null);
   // A failed read is said in place (not a toast on every poll); the next poll that works clears it.
   const [error, setError] = useState<Error>();
@@ -246,6 +247,7 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="break-words">{r.name}</span>
                       <span className="text-muted-foreground text-xs font-medium">{r.enabled ? sentence(cronText(r.cron)) : `Paused · ${cronText(r.cron)}`}</span>
+                      {r.group && <span className="text-muted-foreground text-xs font-medium">Posts to {groups.find((g) => g.id === r.group)!.title}</span>}
                       <p className="text-muted-foreground pt-1 break-words">{r.prompt}</p>
                     </div>
                     <div className="flex h-5 items-center gap-3">

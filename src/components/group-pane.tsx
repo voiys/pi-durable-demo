@@ -3,7 +3,9 @@ import { useAgent } from "agents/react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ai/markdown";
 import type { Sender } from "@/components/ai/agents-message";
+import { cronText } from "@/components/ai/activity";
 import { BotAvatar } from "@/components/bot-avatar";
+import { sentence } from "@/components/bot-panel";
 import { breaksTime, Composer, HeaderBar, Said, Status, Thread, ThreadEmpty, ThreadItem, ThreadRow, ThreadSkeleton, TimeDivider, WorkingRow, YourSaid } from "@/components/bot-pane";
 import { BARE, CARD, CELL, DangerRow, Group, Identity, LINE, NAME, PanelBody, Saved, TAP, useField } from "@/components/panel";
 import { QuoteProvider } from "@/components/quotes";
@@ -12,12 +14,13 @@ import { EmptyHeader } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SETTLE, SettleEmpty, SLIDE_UP, useCalm } from "@/lib/motion";
 import { cn, fail } from "@/lib/utils";
-import { createGroup, disbandGroup, postToGroup, updateGroup } from "@/server/fns";
-import { botObjectName, type BotSummary, type GroupState, type GroupSummary } from "@/shared";
+import { botDetails, createGroup, disbandGroup, postToGroup, setRoutineEnabled, updateGroup } from "@/server/fns";
+import { botObjectName, type BotSummary, type GroupState, type GroupSummary, type Routine } from "@/shared";
 
 /** A few member faces: `md` sets them in a 36px tile for the rail, `sm` (20px) and `lg` (56px) line them up, `face`
  * the px size of each in a line. Side by side, not overlapped: bloub shapes aren't round, so a cut ring wouldn't fit. */
@@ -225,8 +228,49 @@ function PurposeGroup({ groupId, purpose }: { groupId: string; purpose: string }
   );
 }
 
+/** The room's routines: what its member bots do here on a schedule (made by asking them in the room), each with its
+ * bot and an on/off switch. Read from the members' details and polled like a bot's details; a failed read is said in place. */
+function RoomRoutines({ group, members }: { group: GroupSummary; members: BotSummary[] }) {
+  const [routines, setRoutines] = useState<{ bot: BotSummary; routine: Routine }[] | null>(null);
+  const [error, setError] = useState<Error>();
+  const ids = members.map((b) => b.id).join();
+  useEffect(() => {
+    const poll = () =>
+      Promise.all(members.map(async (bot) => (await botDetails({ data: bot.id })).routines.filter((r) => r.group === group.id).map((routine) => ({ bot, routine })))).then(
+        (all) => (setRoutines(all.flat()), setError(undefined)),
+        setError,
+      );
+    void poll();
+    const t = setInterval(poll, 2000);
+    return () => clearInterval(t);
+  }, [group.id, ids]);
+  if (!routines) return null;
+  return (
+    <Group title="Routines" footer={error && `Couldn't load the routines: ${error.message}. Trying again in a moment.`}>
+      <ul className={CARD}>
+        {routines.length === 0 && <li className={cn(CELL, "text-muted-foreground py-2.5 text-pretty")}>None yet. Ask a bot here something like “@{members[0].name} every weekday at 7, post the funding news here”.</li>}
+        {routines.map(({ bot, routine: r }) => (
+          <li key={r.id} className={cn(LINE, "not-first:before:left-11")}>
+            <div className="flex items-start gap-3 px-3 py-2.5 text-sm">
+              <BotAvatar look={bot.look} size={20} className="mt-px" />
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="break-words">
+                  {bot.name} · {r.name}
+                </span>
+                <span className="text-muted-foreground text-xs font-medium">{r.enabled ? sentence(cronText(r.cron)) : `Paused · ${cronText(r.cron)}`}</span>
+                <p className="text-muted-foreground pt-1 break-words">{r.prompt}</p>
+              </div>
+              <Switch checked={r.enabled} aria-label={`Run ${bot.name}'s ${r.name} on schedule`} onCheckedChange={(on) => setRoutineEnabled({ data: { botId: bot.id, id: r.id, enabled: on } }).catch(fail("change routine"))} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Group>
+  );
+}
+
 /** A group's details, inline beside it, as grouped lists: its name and what it's for (both edited in place), who's in
- * it, and disbanding it when the work is done. */
+ * it, its routines, and disbanding it when the work is done. */
 export function GroupPanel({ userId, group, bots, onDisbanded }: { userId: string; group: GroupSummary; bots: BotSummary[]; onDisbanded: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const state = useRoom(userId, group.id);
@@ -271,6 +315,7 @@ export function GroupPanel({ userId, group, bots, onDisbanded }: { userId: strin
           </div>
         </div>
       )}
+      <RoomRoutines group={group} members={members} />
       <Group title="Members">
         <ul className={CARD}>
           {members.map((b) => (

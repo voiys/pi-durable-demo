@@ -345,6 +345,7 @@ function App() {
                   key={bot.id}
                   bot={bot}
                   main={state?.mainBot === bot.id}
+                  groups={state!.groups}
                   report={search.report}
                   onDeleted={() => navigate({ search: {} })}
                 />

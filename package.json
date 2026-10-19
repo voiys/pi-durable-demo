@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@12.6.0",
   "scripts": {
-    "dev": "alchemy dev",
+    "dev": "TZ=UTC alchemy dev",
     "typecheck": "tsc --noEmit",
     "check:optchat-upstream": "node --experimental-transform-types --no-warnings scripts/optchat-upstream.ts",
     "check:optchat-spec": "node --experimental-transform-types --no-warnings --test --test-reporter=spec scripts/optchat-spec.ts",

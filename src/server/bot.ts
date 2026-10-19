@@ -49,10 +49,17 @@ export class Bot extends DurableObject<Env> {
         const m = this.#openMemory();
         if (m.pending > 0 || m.active > 0) this.#keepPumping();
       },
+      // A group's routine runs in that group's conversation: the bot shows as typing in the room and its answer is
+      // posted there like any reply (onYield -> #replyToGroup).
       runRoutine: async ({ id }: { id: string }) => {
         const routine = this.#routines().find((r) => r.id === id);
         if (!routine?.enabled) return;
-        await this.harness.session().submit(`[routine "${routine.name}"] ${routine.prompt}`, { whenBusy: "followUp" });
+        const prompt = `[routine "${routine.name}"] ${routine.prompt}`;
+        if (!routine.group) return void (await this.harness.session().submit(prompt, { whenBusy: "followUp" }));
+        const session = this.ctx.storage.kv.get(`group:session:${routine.group}`) as string | undefined;
+        if (!session) throw new Error(`Routine ${routine.name} targets group ${routine.group}, which this bot has no conversation in`);
+        await this.#group(routine.group).botWorking(this.botId);
+        await this.harness.session(session).submit(prompt, { whenBusy: "followUp" });
       },
     },
   });
@@ -129,7 +136,9 @@ export class Bot extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     if (!this.userId || !this.botId) throw new Error(`Bot DO needs a <userId>--<botId> name, got "${this.#name}"`);
-    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS routines (id TEXT PRIMARY KEY, name TEXT NOT NULL, prompt TEXT NOT NULL, cron TEXT NOT NULL, enabled INTEGER NOT NULL, schedule TEXT)");
+    ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS routines (id TEXT PRIMARY KEY, name TEXT NOT NULL, prompt TEXT NOT NULL, cron TEXT NOT NULL, enabled INTEGER NOT NULL, schedule TEXT, group_id TEXT)");
+    // Routines from before group routines.
+    if (!ctx.storage.sql.exec("SELECT 1 FROM pragma_table_info('routines') WHERE name = 'group_id'").toArray().length) ctx.storage.sql.exec("ALTER TABLE routines ADD COLUMN group_id TEXT");
   }
 
   async onStart() {
@@ -287,7 +296,7 @@ export class Bot extends DurableObject<Env> {
   }
 
   /** A message in one of the user's groups this bot is in: answered in the group's own conversation (created on first
-   * use, without memory, routines, fleet or ask tools), and logged to this bot's memory so it remembers the group. The
+   * use, without memory, fleet or ask tools; routines made there run there), and logged to this bot's memory so it remembers the group. The
    * conversation is re-configured whenever its instructions change (new title, purpose or profile). */
   /** A group message addressed to this bot, after `context`: what the room said since this bot last heard from it. */
   async receiveGroup(groupId: string, title: string, purpose: string, members: string[], context: { from: string; text: string }[], from: string, text: string) {
@@ -304,10 +313,12 @@ export class Bot extends DurableObject<Env> {
       `Everyone in the group sees every message. You are asked to answer one at a time, as "<sender>: <text>" ("> " lines quote the message it replies to); ` +
       `before it, under "Meanwhile in the room:", comes what was said since you last heard, for context only. Your final answer is posted to the group as your message, so write it for everyone; ` +
       `mention a bot as @name to hand it something (a mentioned bot is asked to answer). If you have nothing useful to add, ` +
-      `answer exactly PASS and nothing is posted. Before using tools, say in one short line what you're about to do; it is posted to the group right away.${mine ? `\n\nThe user's instructions for you:\n${mine}` : ""}`;
+      `answer exactly PASS and nothing is posted. Before using tools, say in one short line what you're about to do; it is posted to the group right away. ` +
+      `A routine you add here runs in this group on its schedule, and what you answer then is posted to the group.${mine ? `\n\nThe user's instructions for you:\n${mine}` : ""}`;
     if (this.ctx.storage.kv.get(`group:instructions:${groupId}`) !== instructions) {
       const conversation = await this.harness.conversation(session);
-      await conversation.configure({ extensions: { remove: [this.#optchat, this.#routineTools, this.#fleet, this.#ask] }, instructions }, BACKGROUND_CONTEXT);
+      // Replaces the stored selection whole, so group chats from before group routines get the routines tool back.
+      await conversation.configure({ extensions: { remove: [this.#optchat, this.#fleet, this.#ask] }, instructions }, BACKGROUND_CONTEXT);
       this.ctx.storage.kv.put(`group:instructions:${groupId}`, instructions);
     }
     this.ctx.storage.kv.put(`group:title:${groupId}`, title);
@@ -435,9 +446,9 @@ export class Bot extends DurableObject<Env> {
 
   #routines(): Routine[] {
     return this.ctx.storage.sql
-      .exec<{ id: string; name: string; prompt: string; cron: string; enabled: number }>("SELECT id, name, prompt, cron, enabled FROM routines ORDER BY rowid")
+      .exec<{ id: string; name: string; prompt: string; cron: string; enabled: number; group_id: string | null }>("SELECT id, name, prompt, cron, enabled, group_id FROM routines ORDER BY rowid")
       .toArray()
-      .map((r) => ({ ...r, enabled: r.enabled === 1 }));
+      .map(({ group_id, ...r }) => ({ ...r, enabled: r.enabled === 1, group: group_id }));
   }
 
   async #schedule(id: string, cron: string) {
@@ -445,12 +456,13 @@ export class Bot extends DurableObject<Env> {
     this.ctx.storage.sql.exec("UPDATE routines SET schedule = ? WHERE id = ?", schedule.id, id);
   }
 
-  async addRoutine(name: string, prompt: string, cron: string): Promise<Routine> {
+  /** `group`: the group chat it runs in and posts to, or null for this bot's own chat. */
+  async addRoutine(name: string, prompt: string, cron: string, group: string | null): Promise<Routine> {
     if (!name.trim() || !prompt.trim()) throw new Error("A routine needs a name and a prompt");
     const id = crypto.randomUUID();
     // Scheduled first: the Scheduler rejects a bad cron before any row exists.
     const schedule = await this.scheduler.set(cron.trim(), "runRoutine", { id });
-    this.ctx.storage.sql.exec("INSERT INTO routines (id, name, prompt, cron, enabled, schedule) VALUES (?, ?, ?, ?, 1, ?)", id, name.trim(), prompt.trim(), cron.trim(), schedule.id);
+    this.ctx.storage.sql.exec("INSERT INTO routines (id, name, prompt, cron, enabled, schedule, group_id) VALUES (?, ?, ?, ?, 1, ?, ?)", id, name.trim(), prompt.trim(), cron.trim(), schedule.id, group);
     return this.#routines().find((r) => r.id === id)!;
   }
 
@@ -473,14 +485,20 @@ export class Bot extends DurableObject<Env> {
     this.ctx.storage.sql.exec("DELETE FROM routines WHERE id = ?", id);
   }
 
-  /** The bot's own tool for routines, so "check X every morning" sets one up. Main agent only. */
+  /** The group was disbanded: its routines stop and go. */
+  async leaveGroup(groupId: string) {
+    for (const r of this.#routines().filter((r) => r.group === groupId)) await this.deleteRoutine(r.id);
+  }
+
+  /** The bot's tool for routines, so "check X every morning" sets one up: in its own chat, or in a group chat, where the
+   * routine runs in and posts to that group (and only that group's routines are listed or removed). Not for subagents. */
   readonly #routineTools = defineExtension({
     name: "routines",
     tools: [
       defineTool({
         name: "routines",
         description:
-          "Prompts you get on a schedule, in this conversation. Actions: list, add (name, prompt, cron: 5-field cron in UTC, " +
+          "Prompts you get on a schedule, in this conversation (in a group chat, your answer is posted to the group). Actions: list, add (name, prompt, cron: 5-field cron in UTC, " +
           'e.g. "0 7 * * 1-5" for weekdays at 07:00 UTC), remove (name).',
         parameters: Type.Object({ intent,
           action: Type.Union([Type.Literal("list"), Type.Literal("add"), Type.Literal("remove")]),
@@ -489,14 +507,16 @@ export class Bot extends DurableObject<Env> {
           cron: Type.Optional(Type.String()),
         }),
         replay: "unsafe",
-        execute: async ({ action, name, prompt, cron }) => {
-          if (action === "list") return say(this.#routines().map((r) => `${r.name} (${r.cron}${r.enabled ? "" : ", off"}): ${r.prompt}`).join("\n") || "No routines.");
+        execute: async ({ action, name, prompt, cron }, api) => {
+          const group = this.#groupOf(String(api.conversationId)) ?? null;
+          const here = this.#routines().filter((r) => r.group === group);
+          if (action === "list") return say(here.map((r) => `${r.name} (${r.cron}${r.enabled ? "" : ", off"}): ${r.prompt}`).join("\n") || "No routines.");
           if (action === "add") {
             if (!name || !prompt || !cron) return { ...say("add needs name, prompt and cron"), isError: true };
-            const r = await this.addRoutine(name, prompt, cron);
-            return say(`Added routine ${r.name} (${r.cron}).`);
+            const r = await this.addRoutine(name, prompt, cron, group);
+            return say(`Added routine ${r.name} (${r.cron})${group ? ", posting to this group" : ""}.`);
           }
-          const target = this.#routines().find((r) => r.name === name);
+          const target = here.find((r) => r.name === name);
           if (!target) return { ...say(`No routine named ${name}`), isError: true };
           await this.deleteRoutine(target.id);
           return say(`Removed routine ${target.name}.`);
