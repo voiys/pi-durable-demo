@@ -2,7 +2,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { Plus, Search, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { BotAvatar } from "@/components/bot-avatar";
 import { BotPanel } from "@/components/bot-panel";
@@ -45,20 +45,24 @@ const status = (b: Pick<BotSummary, "working" | "unread">) => (b.working ? "Work
 
 /**
  * A face in the rail. The open conversation gets a small ink bar at the rail's edge (macOS Dock / Linear), never a ring
- * around the face; hovering a closed one shows a shorter bar. A working bot gets a 2px ring in its own color, pulsing
- * (steady under reduced motion). The dot is unread, never on the open one: it pops in once (scale 0.6 to 1, 200ms spring,
+ * around the face; hovering a closed one shows a shorter bar. A working bot's face shows bloub's thinking dots. The dot is unread, never on the open one: it pops in once (scale 0.6 to 1, 200ms spring,
  * no bounce; a fade under reduced motion) and fades out when read. A new face rises into the rail (ARRIVE).
- * Resting on it (or focusing it) shows a small card with a glance at who it is; the face itself opens the conversation.
+ * Resting on it (or focusing it) shows a small card with a glance at who it is; the face itself opens the conversation,
+ * and the card closes as it does (the open conversation needs no glance). `warm` (useWarmCards) opens it at once.
  */
-function RailItem({ label, active, unread = false, onClick, face, card }: { label: string; active: boolean; unread?: boolean; onClick: () => void; face: ReactNode; card: Omit<GlanceProps, "face"> }) {
+function RailItem({ label, active, unread = false, onClick, face, card, warm }: { label: string; active: boolean; unread?: boolean; onClick: () => void; face: ReactNode; card: Omit<GlanceProps, "face">; warm: Warm }) {
+  const [open, setOpen] = useState(false);
+  // The open chat's face forgets its card (a focus or hover open can land just as it becomes active), and requests on it
+  // are dropped, so its card can't surface once another chat is opened.
+  useEffect(() => void (active && setOpen(false)), [active]);
   return (
-    <HoverCard openDelay={300} closeDelay={100}>
+    <HoverCard open={open && !active} onOpenChange={(o) => !(o && active) && (setOpen(o), warm.onCard(o))} openDelay={warm.on ? 0 : 600} closeDelay={warm.on ? 0 : 100}>
       <HoverCardTrigger asChild>
         <motion.button
           {...ARRIVE}
           aria-label={label}
           aria-current={active || undefined}
-          onClick={onClick}
+          onClick={() => (warm.onCard(false), onClick())}
           // flex: an inline button's line box would push the ring off the avatar's center.
           className="group/rail relative flex shrink-0 rounded-[15px] p-[3px] focus-visible:outline-2 focus-visible:outline-offset-1"
         >
@@ -85,11 +89,27 @@ function RailItem({ label, active, unread = false, onClick, face, card }: { labe
         </motion.button>
       </HoverCardTrigger>
       {/* The faces' rings are cut in the rail's canvas color; on the card they are cut in its surface instead. */}
-      <HoverCardContent side="right" align="start" className="flex flex-col gap-3 [--canvas:var(--popover)]">
+      <HoverCardContent side="right" align="start" className={cn("flex flex-col gap-3 [--canvas:var(--popover)]", warm.on && "animate-none data-[state=closed]:animate-none")}>
         <Glance face={face} name={card.name} line={card.line} about={card.about} />
       </HoverCardContent>
     </HoverCard>
   );
+}
+
+/** The rail's cards: the first opens after a 600ms rest; while one is open, or within 400ms of one closing, the next
+ * opens at once and without its zoom, so moving along the rail swaps cards in place (the macOS Dock's labels). */
+type Warm = { on: boolean; onCard: (open: boolean) => void };
+function useWarmCards(): Warm {
+  const [on, setOn] = useState(false);
+  const cool = useRef<ReturnType<typeof setTimeout>>(undefined);
+  return {
+    on,
+    onCard: (open) => {
+      clearTimeout(cool.current);
+      if (open) setOn(true);
+      else cool.current = setTimeout(() => setOn(false), 400);
+    },
+  };
 }
 
 /** The rail card's body: the face beside the name and a line of status, and a few lines about it. No "Open": clicking
@@ -157,6 +177,7 @@ function App() {
   }, [gone]);
   const togglePanel = (panel: "details" | "search") => navigate({ search: (s) => ({ ...s, panel: s.panel === panel ? undefined : panel }) });
   const showing = !search.new && (group ?? bot);
+  const warm = useWarmCards();
 
   return (
     <div className="bg-background flex h-svh overflow-hidden">
@@ -178,6 +199,7 @@ function App() {
                     unread={b.unread}
                     onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}
                     face={<BotAvatar look={b.look} size={36} working={b.working} follow />}
+                    warm={warm}
                     card={{ name: b.name, line: [main && "Main bot", status(b) ?? "Up to date"].filter(Boolean).join(" · "), about: b.instructions }}
                   />,
                 ];
@@ -193,6 +215,7 @@ function App() {
                     active={active}
                     onClick={() => navigate({ search: (s) => ({ group: g.id, panel: s.panel === "search" ? "search" : undefined }) })}
                     face={<GroupAvatar members={members} />}
+                    warm={warm}
                     card={{ name: g.title, line: `Group of ${members.length} bots`, about: members.map((m) => m.name).join(", ") }}
                   />
                 );

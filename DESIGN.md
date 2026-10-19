@@ -129,7 +129,12 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   pointer wherever it is (a gaze script aimed straight at it; bloub's own `follow` biases the head 26° left), not under reduced motion), main bot first with an 8px gap +
   hairline. Groups after another hairline: a 36px muted tile holding up to three member faces.
 - **Glance layer (required):** a working bot's face becomes bloub's thinking dots (still dots under reduced motion);
-  unread shows a 8px blue dot top-right. Tooltip = name + one-line status ("Reading 3 pages…").
+  unread shows a 8px blue dot top-right. Resting on a face shows its glance card (name + one-line status) after 600ms;
+  while a card is open, or within 400ms of one closing, the next face's card swaps in at once with no zoom (the macOS
+  Dock's labels). The open chat's face never shows one, and clicking a face closes its card.
+- **Switching chats is instant:** each conversation and room opened this session is shown from its last view on the
+  first frame (use-pi-session `lastSeen`, group-pane `lastRoom`); the live snapshot replaces it a moment later. A first
+  visit waits 300ms before its skeleton fades in, so a fast load never flashes a loader.
   Bots only: groups get no working/unread marker in the rail, since you see who's working inside the room and groups are
   short-lived (decided 2026-10-19).
 
@@ -243,7 +248,8 @@ State swaps use `initial={false}`, and history, panel lists and the rail on load
 | Panel sections, report text, search hits | opacity 150ms on mount (replacing the skeleton) |
 | Panel list rows, inline confirm swap | opacity 150ms in, 100ms out (`ROW`); trigger row and confirm share 44px (32px confirm + 6px pad) so nothing jumps |
 | "Saved" caption | `FADE`, shown 1.5s after a field saves; the status region stays mounted |
-| Menus, popover, tooltip, hover card | opacity + zoom 0.96→1 + 4px from the trigger side, 150ms in, 100ms out |
+| Menus, popover, tooltip, hover card | opacity + zoom 0.96→1 + 4px from the trigger side, 150ms in, 100ms out; a rail card swapping from a neighbour's: none |
+| Opening a chat | none: the last view at once (first visit: skeleton held 300ms, then a 200ms fade) |
 | Empty states, new bot, new group, empty-thread suggestions | chunks 100ms apart, each `SLIDE_UP` (`SETTLE`) |
 | Login card | `FADE` |
 | Disclosure | height via `--radix-collapsible-content-height`, 200ms |

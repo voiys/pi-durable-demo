@@ -235,9 +235,11 @@ export function ThreadEmpty({ face, title, description, suggestions = [], onPick
 
 /** A thread on its way (the connection opening, nothing on screen yet): a few bubbles' shapes, theirs left and yours
  * right, at the bubble radius. */
+// Held back 300ms, then faded in: a conversation that opens faster never flashes a loader (a chat seen before opens from
+// its last view at once, use-pi-session lastSeen).
 export function ThreadSkeleton() {
   return (
-    <MessageScrollerItem messageId="loading" role="status" className="flex flex-col gap-3 pt-3">
+    <MessageScrollerItem messageId="loading" role="status" className="animate-in fade-in fill-mode-backwards flex flex-col gap-3 pt-3 delay-300 duration-200">
       <span className="sr-only">Opening the conversation…</span>
       {["self-end w-40", "w-64", "w-48", "self-end w-56"].map((c) => (
         <Skeleton key={c} aria-hidden className={cn("h-10 max-w-[75%] rounded-xl", c)} />

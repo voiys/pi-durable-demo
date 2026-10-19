@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/ai/markdown";
 import type { Sender } from "@/components/ai/agents-message";
 import { BotAvatar } from "@/components/bot-avatar";
@@ -46,8 +46,15 @@ export function ThreadHeader({ group, members, detailsOpen, onToggleDetails }: {
   return <HeaderBar face={<GroupAvatar members={members} size="sm" />} name={group.title} detailsOpen={detailsOpen} onToggleDetails={onToggleDetails} />;
 }
 
-/** A group room's synced state (Group DO), for its thread and its details. */
-const useRoom = (userId: string, groupId: string) => useAgent<GroupState>({ agent: "group", name: botObjectName(userId, groupId) }).state;
+/** The last state of each room opened in this tab, shown while its socket connects (see lastSeen in use-pi-session). */
+const lastRoom = new Map<string, GroupState>();
+
+/** A group room's synced state (Group DO), for its thread and its details: the live one, or until it syncs, the last one seen. */
+function useRoom(userId: string, groupId: string) {
+  const live = useAgent<GroupState>({ agent: "group", name: botObjectName(userId, groupId) }).state;
+  useEffect(() => void (live && lastRoom.set(groupId, live)), [groupId, live]);
+  return live ?? lastRoom.get(groupId);
+}
 
 const names = (list: string[]) => (list.length < 3 ? list.join(" and ") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`);
 

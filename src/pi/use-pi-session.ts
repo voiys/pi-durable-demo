@@ -23,6 +23,11 @@ const INITIAL_STATE: State = {
   catalog: []
 };
 
+/** The last view of each session opened in this tab (key: object and session). A pane opening a conversation it has
+ * shown before starts from it, so switching chats is instant instead of a skeleton flash; the snapshot every connection
+ * sends replaces it whole a moment later (view.ts reduceView "snapshot"). */
+const lastSeen = new Map<string, State>();
+
 /**
  * One pi session over the harness's WebSocket protocol, connected with
  * `useAgent`. The server sends pi's own agent events; this folds them with
@@ -30,7 +35,10 @@ const INITIAL_STATE: State = {
  * snapshot, so there is nothing to resume from.
  */
 export function usePiSession(object: string, session?: string) {
-  const [state, setState] = useState<State>(INITIAL_STATE);
+  const key = `${object}|${session ?? ""}`;
+  const seed = () => ({ ...(lastSeen.get(key) ?? INITIAL_STATE), status: "connecting" as const });
+  const [state, setState] = useState<State>(seed);
+  useEffect(() => void lastSeen.set(key, state), [key, state]);
 
   const agent = useAgent({
     agent: "bot",
@@ -65,8 +73,8 @@ export function usePiSession(object: string, session?: string) {
   });
 
   useEffect(() => {
-    setState(INITIAL_STATE);
-  }, [object, session]);
+    setState(seed());
+  }, [key]);
 
   const send = useCallback(
     (message: ClientMessage) => {
