@@ -2,7 +2,7 @@ import type { OAuthCredential } from "@earendil-works/pi-ai";
 import { Agent } from "agents";
 import type { Env } from "../env.ts";
 import { authorize, complete, refresh, type Connection, type Pending } from "./siwc.ts";
-import { BOT_COLORS, botObjectName, type BotSummary, type IndexRow, type SearchHit, type UserState } from "../shared.ts";
+import { botColor, botObjectName, type BotSummary, type IndexRow, type SearchHit, type UserState } from "../shared.ts";
 
 /**
  * One per better-auth user (name = user id). Owns the bot list (synced to the sidebar as agent state), the FTS5 search
@@ -19,10 +19,14 @@ export class User extends Agent<Env, UserState> {
     this.sql`CREATE TABLE IF NOT EXISTS bot_agents (bot_id TEXT NOT NULL, name TEXT NOT NULL, session TEXT NOT NULL, PRIMARY KEY (bot_id, name))`;
     this.sql`CREATE TABLE IF NOT EXISTS indexed (bot_id TEXT NOT NULL, entry_id TEXT NOT NULL, PRIMARY KEY (bot_id, entry_id))`;
     this.sql`CREATE VIRTUAL TABLE IF NOT EXISTS messages USING fts5(text, bot_id UNINDEXED, entry_id UNINDEXED, role UNINDEXED, tokenize = 'porter unicode61')`;
+    // The rail's glance layer: when the user last looked at each bot, and whether its main conversation is running.
+    this.sql`CREATE TABLE IF NOT EXISTS glance (bot_id TEXT PRIMARY KEY, seen INTEGER NOT NULL, working INTEGER NOT NULL DEFAULT 0)`;
+    this.sql`INSERT OR IGNORE INTO glance (bot_id, seen) SELECT id, updated_at FROM bots`; // bots from before the glance layer
   }
 
   #publish() {
-    const bots = this.sql<{ id: string; name: string; instructions: string; color: string; updated_at: number }>`SELECT * FROM bots ORDER BY rowid`;
+    const bots = this.sql<{ id: string; name: string; instructions: string; color: string; updated_at: number; seen: number; working: number }>`
+      SELECT b.*, g.seen, g.working FROM bots b JOIN glance g ON g.bot_id = b.id ORDER BY b.rowid`;
     const agents = this.sql<{ bot_id: string; name: string; session: string }>`SELECT * FROM bot_agents ORDER BY rowid`;
     const groups = this.sql<{ id: string; title: string; members: string }>`SELECT * FROM groups ORDER BY rowid`;
     this.setState({
@@ -35,6 +39,8 @@ export class User extends Agent<Env, UserState> {
         color: b.color,
         updatedAt: b.updated_at,
         agents: agents.filter((a) => a.bot_id === b.id).map(({ name, session }) => ({ name, session })),
+        working: b.working === 1,
+        unread: b.updated_at > b.seen,
       })),
     });
   }
@@ -49,8 +55,10 @@ export class User extends Agent<Env, UserState> {
     const trimmed = name.trim();
     this.#checkName(trimmed);
     const id = crypto.randomUUID();
-    const color = BOT_COLORS[this.sql`SELECT 1 FROM bots`.length % BOT_COLORS.length];
-    this.sql`INSERT INTO bots (id, name, instructions, color, updated_at) VALUES (${id}, ${trimmed}, ${instructions.trim()}, ${color}, ${Date.now()})`;
+    const color = botColor(this.sql`SELECT 1 FROM bots`.length);
+    const now = Date.now();
+    this.sql`INSERT INTO bots (id, name, instructions, color, updated_at) VALUES (${id}, ${trimmed}, ${instructions.trim()}, ${color}, ${now})`;
+    this.sql`INSERT INTO glance (bot_id, seen) VALUES (${id}, ${now})`;
     this.#publish();
     await this.#sendProfile(id);
     // The first bot is the main bot until the user picks another.
@@ -119,6 +127,20 @@ export class User extends Agent<Env, UserState> {
     this.#publish();
   }
 
+  /** The Bot DO reports when a run of its main conversation starts and ends (src/server/bot.ts #watchRuns). */
+  setWorking(botId: string, working: boolean) {
+    this.bot(botId);
+    this.sql`UPDATE glance SET working = ${working ? 1 : 0} WHERE bot_id = ${botId}`;
+    this.#publish();
+  }
+
+  /** The user is looking at the bot's conversation: what it said so far is read. */
+  markSeen(botId: string) {
+    if (!this.bot(botId).unread) return;
+    this.sql`UPDATE glance SET seen = ${Date.now()} WHERE bot_id = ${botId}`;
+    this.#publish();
+  }
+
   /** Wipes the Bot DO (conversation, memory, subagents, routines) and its BotData DO, then every trace of it here. */
   async deleteBot(botId: string) {
     this.bot(botId);
@@ -130,6 +152,7 @@ export class User extends Agent<Env, UserState> {
     this.sql`DELETE FROM messages WHERE bot_id = ${botId}`;
     this.sql`DELETE FROM indexed WHERE bot_id = ${botId}`;
     this.sql`DELETE FROM bot_agents WHERE bot_id = ${botId}`;
+    this.sql`DELETE FROM glance WHERE bot_id = ${botId}`;
     this.sql`DELETE FROM bots WHERE id = ${botId}`;
     this.#publish();
   }

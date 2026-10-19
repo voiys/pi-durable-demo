@@ -1,3 +1,4 @@
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { Brain, Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
@@ -13,19 +14,27 @@ import type { ModelOption } from "@/shared";
 let cached: ModelOption[] | undefined;
 let loading: Promise<ModelOption[]> | undefined;
 
+/** Reasoning levels in words (DESIGN.md §8: sentence case, no identifiers on the surface). */
+const LEVELS: Record<ModelThinkingLevel, string> = { off: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
+const levelName = (level: string) => {
+  const name = LEVELS[level as ModelThinkingLevel];
+  if (!name) throw new Error(`Unknown reasoning level ${level}`);
+  return name;
+};
+
 /** A brain button in the prompt input: pick the model, then the reasoning effort on a stepped slider of that model's levels.
  * `onChange` applies the choice to the bot. */
 export function ModelPicker({ model, thinkingLevel, onChange }: { model: string | null; thinkingLevel: string | null; onChange: (model: string, thinkingLevel: string) => Promise<unknown> }) {
-  const [options, setOptions] = useState<ModelOption[]>(cached ?? []);
+  const [options, setOptions] = useState<ModelOption[] | "failed" | undefined>(cached);
   useEffect(() => {
     loading ??= modelOptions().then((list) => (cached = list));
-    loading.then(setOptions, (e: Error) => ((loading = undefined), fail("load models")(e)));
+    loading.then(setOptions, (e: Error) => ((loading = undefined), setOptions("failed"), fail("load models")(e)));
   }, []);
-  const current = options.find((o) => o.id === model);
+  const list = Array.isArray(options) ? options : [];
+  const current = list.find((o) => o.id === model);
   const levels = current?.levels ?? [];
-  const label = `${current?.name ?? model ?? "Model"} · ${thinkingLevel ?? "-"}`;
-  const change = (next: string, level: string) =>
-    onChange(next, level).catch(fail("change model"));
+  const label = [current?.name ?? model, thinkingLevel && `${levelName(thinkingLevel)} reasoning`].filter(Boolean).join(" · ") || "Model";
+  const change = (next: string, level: string) => onChange(next, level).catch(fail("change model"));
 
   return (
     <Popover>
@@ -37,21 +46,24 @@ export function ModelPicker({ model, thinkingLevel, onChange }: { model: string 
             </InputGroupButton>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
+        <TooltipContent className="text-sm">{label}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="start" side="top" className="w-64 p-0">
-        <Command>
+      <PopoverContent align="start" side="top" sideOffset={8} className="shadow-float w-64 rounded-lg border-0 p-0">
+        <Command className="rounded-lg bg-transparent">
           <CommandList>
-            <CommandGroup heading="Model">
-              {options.map((o) => (
+            <CommandGroup heading="Model" className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium">
+              {options === undefined && <p className="text-muted-foreground px-2 py-1.5 text-sm">Loading models…</p>}
+              {options === "failed" && <p className="text-muted-foreground px-2 py-1.5 text-sm">Couldn't load the models on your plan.</p>}
+              {list.map((o) => (
                 <CommandItem
                   key={o.id}
                   value={o.id}
+                  className="text-sm"
                   // Keep the effort when the new model supports it, else take the new model's lowest level.
                   onSelect={() => change(o.id, o.levels.find((l) => l === thinkingLevel) ?? o.levels[0])}
                 >
                   <span className="flex-1 truncate">{o.name}</span>
-                  <Check className={cn("size-4", o.id !== model && "invisible")} />
+                  <Check className={cn(o.id !== model && "invisible")} />
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -60,7 +72,7 @@ export function ModelPicker({ model, thinkingLevel, onChange }: { model: string 
         {/* Outside the Command: a listbox may only hold options. */}
         {levels.length > 1 && (
           <div className="border-t p-3">
-            <StepSlider label="Reasoning" steps={levels} value={levels.findIndex((l) => l === thinkingLevel)} onCommit={(i) => change(model!, levels[i])} ticks />
+            <StepSlider label="Reasoning" steps={levels.map(levelName)} value={levels.findIndex((l) => l === thinkingLevel)} onCommit={(i) => change(model!, levels[i])} ticks />
           </div>
         )}
       </PopoverContent>

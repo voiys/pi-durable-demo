@@ -92,6 +92,10 @@ Never text, never buttons, never backgrounds.
 
 Bubbles are 15px (Messages on macOS is ~15px); inputs are 16px below `md` (iOS zoom), 15px above.
 
+**In code** the scale lives on Tailwind's own names (`src/styles.css`), so shadcn parts and class merging follow it:
+`text-2xl` title, `text-lg` headline, `text-base` body, `text-sm` callout, `text-xs` caption (each carries its line-height
+and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Npx]` or `font-[N]` in components.
+
 ## 5. Space, shape, elevation
 
 - **Grid:** 4px base. Ladder: 2, 4, 6, 8, 12, 16, 24, 32, 48. Between messages from the same sender: 2px; between
@@ -130,7 +134,8 @@ Bubbles are 15px (Messages on macOS is ~15px); inputs are 16px below `md` (iOS z
   saved data"), chevron on hover only; expands into steps; steps expand into sources/data. Running: shimmer on the text,
   never a spinner.
 - **Artifacts:** reports, tables and links render as cards (12px radius, surface fill, hairline) inline after the
-  activity line: icon tile 36px, title 13px/510, description caption. Click opens in the side panel.
+  activity line: title 13px/510, description caption, no icon tile (§2.0). Click opens in the side panel.
+- **Links in bubbles** are underlined in the bubble's own ink, as in Messages: blue on the gray bubble is 3.9:1.
 - **Agent messages** (another bot, a helper, a routine): group-chat style (avatar + name), or a centered caption
   ("Routine ai-news ran", "scout brought in digger") for system events.
 

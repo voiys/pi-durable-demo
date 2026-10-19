@@ -5,12 +5,14 @@ import { cn } from "@/lib/utils";
 export function InlineConfirm({ question, action, onConfirm, onCancel, className }: { question: string; action: string; onConfirm: () => void; onCancel: () => void; className?: string }) {
   return (
     <InputGroup
-      className={cn("animate-in fade-in bg-destructive/10 dark:bg-destructive/10 border-destructive/30 h-8 duration-150 motion-reduce:animate-none", className)}
+      role="group"
+      aria-label={question}
+      className={cn("animate-in fade-in bg-destructive/10 dark:bg-destructive/10 h-8 rounded-md border-transparent shadow-none duration-150 motion-reduce:animate-none", className)}
       onKeyDown={(e) => e.key === "Escape" && onCancel()}
       onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && onCancel()}
     >
       <InputGroupAddon className="min-w-0 flex-1 justify-start">
-        <InputGroupText className="text-destructive min-w-0">
+        <InputGroupText className="text-destructive min-w-0 text-sm font-medium">
           <span className="truncate">{question}</span>
         </InputGroupText>
       </InputGroupAddon>

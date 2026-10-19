@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { intent } from "./intent.ts";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type, type AssistantMessage } from "@earendil-works/pi-ai";
-import { createRegistry, defineExtension, defineTool, GenerationTask, Harness, hook, ROOT_CONVERSATION_ID, type EntryRecord } from "@earendil-works/pi-durable";
+import { createRegistry, defineExtension, defineTool, GenerationTask, Harness, hook, ROOT_CONVERSATION_ID, type AgentEventStream, type EntryRecord } from "@earendil-works/pi-durable";
 import { PiHarness, ROOT_SESSION } from "agents/harness/pi";
 import { Lifecycle } from "agents/lifecycle";
 import { Scheduler } from "agents/schedules";
@@ -124,8 +124,34 @@ export class Bot extends DurableObject<Env> {
 
   async onStart() {
     await this.sockets.reattach();
+    await this.#watchRuns();
     // A log with pending summaries resumes after eviction (G7).
     if (this.ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'optchat_log'").toArray().length) this.#keepPumping();
+  }
+
+  // --- glance: the rail shows whether this bot is working ---
+
+  #runs: AgentEventStream | undefined;
+  #working: boolean | undefined;
+
+  /** Follows the main conversation's runs and tells the User DO when one starts and ends. The run events cover every
+   * way a run ends (answer, abort, model error), and the snapshot corrects what the User DO had after a restart. */
+  async #watchRuns() {
+    const stream = await this.harness.session().events();
+    this.#runs = stream;
+    await this.#setWorking(stream.snapshot.run !== undefined);
+    stream.start(async (events) => {
+      for (const e of events) {
+        if (e.type === "snapshot") await this.#setWorking(e.run !== undefined);
+        if (e.type === "run_start" || e.type === "run_end") await this.#setWorking(e.type === "run_start");
+      }
+    });
+  }
+
+  async #setWorking(working: boolean) {
+    if (working === this.#working) return;
+    this.#working = working;
+    await this.#user().setWorking(this.botId, working);
   }
 
   // --- profile ---
@@ -503,6 +529,7 @@ export class Bot extends DurableObject<Env> {
    * catalog right after, so the gate never routes to this name again. */
   async wipe() {
     await this.harness.session().abort();
+    await this.#runs?.stop(); // after the abort's run_end: the User DO drops this bot next, nothing may report on it after
     await this.#memory?.close();
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();

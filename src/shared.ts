@@ -1,8 +1,9 @@
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 // Types and helpers shared by the browser and the Durable Objects (no server imports here).
 
-/** A bot: one endless conversation with its own OptChat memory (DECISIONS.md). `agents` are its subagents. */
-export type BotSummary = { id: string; name: string; instructions: string; color: string; updatedAt: number; agents: { name: string; session: string }[] };
+/** A bot: one endless conversation with its own OptChat memory (DECISIONS.md). `agents` are its subagents. The glance
+ * layer: `working` while a run of its main conversation is live, `unread` when it changed since the user last looked. */
+export type BotSummary = { id: string; name: string; instructions: string; color: string; updatedAt: number; agents: { name: string; session: string }[]; working: boolean; unread: boolean };
 export type SearchHit = { botId: string; entryId: string; role: string; snippet: string; name: string };
 /** FTS5 snippet() wraps each match in these control characters (src/server/user.ts search), so text never collides with them. */
 export const MATCH_OPEN = "\u0002";
@@ -29,6 +30,8 @@ export type BotDetails = { memory: MemoryStats; routines: Routine[]; library: Li
 
 /** Avatar colors a new bot picks from (Tailwind palette, so they read on both themes). */
 export const BOT_COLORS = ["#f97316", "#3b82f6", "#a855f7", "#ef4444", "#14b8a6", "#22c55e", "#eab308", "#ec4899"] as const;
+/** The color the user's next bot gets, given how many bots they have (src/server/user.ts createBot). */
+export const botColor = (count: number) => BOT_COLORS[count % BOT_COLORS.length];
 
 /** Bot DO names are `<userId>--<botId>`; the Worker gates sockets on that prefix. */
 export const botObjectName = (userId: string, botId: string) => `${userId}--${botId}`;

@@ -1,8 +1,7 @@
-import { SearchIcon, SearchX } from "lucide-react";
 import { Fragment, useEffect, useState } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Input } from "@/components/ui/input";
+import { fail } from "@/lib/utils";
 import { searchMessages } from "@/server/fns";
 import { MATCH_CLOSE, MATCH_OPEN, type BotSummary, type SearchHit } from "@/shared";
 
@@ -14,7 +13,7 @@ function Snippet({ text }: { text: string }) {
         const [match, rest] = i === 0 ? ["", chunk] : chunk.split(MATCH_CLOSE);
         return (
           <Fragment key={i}>
-            {match && <mark className="bg-highlight text-foreground rounded-[2px]">{match}</mark>}
+            {match && <mark className="bg-highlight text-foreground rounded-sm">{match}</mark>}
             {rest}
           </Fragment>
         );
@@ -23,51 +22,49 @@ function Snippet({ text }: { text: string }) {
   );
 }
 
-/** bm25 search over every bot's conversation; a hit opens that bot at the message. */
+/** bm25 search over every bot's conversation; a hit opens that bot at the message. `hits` is undefined while a search
+ * for the current query is on its way, so the panel says "Searching…" instead of a stale or empty answer. */
 export function SearchPanel({ bots, onOpen }: { bots: BotSummary[]; onOpen: (hit: SearchHit) => void }) {
   const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [hits, setHits] = useState<SearchHit[] | "failed" | undefined>([]);
+  const q = query.trim();
   useEffect(() => {
-    if (!query.trim()) return setHits([]);
-    const t = setTimeout(async () => setHits(await searchMessages({ data: query })), 150);
-    return () => clearTimeout(t);
-  }, [query]);
+    if (!q) return setHits([]);
+    setHits(undefined);
+    let current = true;
+    const t = setTimeout(() => searchMessages({ data: q }).then((h) => current && setHits(h), (e: Error) => current && (setHits("failed"), fail("search")(e))), 150);
+    return () => ((current = false), clearTimeout(t));
+  }, [q]);
+  const status = !q ? "Finds words in every bot's conversation, best match first." : hits === undefined ? "Searching…" : hits === "failed" ? "Couldn't search just now. Edit the words to try again." : hits.length === 0 ? `Nothing matches “${q}”.` : null;
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-      <InputGroup>
-        <InputGroupInput autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all bots" aria-label="Search all bots" />
-        <InputGroupAddon>
-          <SearchIcon />
-        </InputGroupAddon>
-      </InputGroup>
-      {query.trim() && hits.length === 0 && (
-        <Empty className="p-4 md:p-4">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <SearchX />
-            </EmptyMedia>
-            <EmptyTitle>No matches</EmptyTitle>
-          </EmptyHeader>
-        </Empty>
-      )}
-      <ul className="-mx-2 flex min-h-0 flex-col gap-1 overflow-y-auto overscroll-contain">
-        {hits.map((h) => {
-          const bot = bots.find((b) => b.id === h.botId);
-          return (
-            <li key={`${h.botId}:${h.entryId}`}>
-              <button className="hover:bg-accent flex w-full gap-2 rounded-md p-2 text-left transition-colors" onClick={() => onOpen(h)}>
-                {bot && <BotAvatar bot={bot} size="sm" className="mt-0.5" />}
-                <span className="grid min-w-0 gap-0.5">
-                  <span className="text-xs font-medium">{h.name}</span>
-                  <span className="text-muted-foreground line-clamp-3 text-xs">
-                    <Snippet text={h.snippet} />
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
+      <Input autoFocus type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search all bots" aria-label="Search all bots" className="bg-surface dark:bg-surface shadow-none" />
+      <p role="status" className={status ? "text-muted-foreground px-1 text-sm" : "sr-only"}>
+        {status ?? `${hits!.length} ${hits!.length === 1 ? "match" : "matches"}`}
+      </p>
+      {Array.isArray(hits) && hits.length > 0 && (
+        <ul className="-mx-2 flex min-h-0 flex-col gap-px overflow-y-auto overscroll-contain">
+          {hits.map((h) => {
+            const bot = bots.find((b) => b.id === h.botId);
+            return (
+              <li key={`${h.botId}:${h.entryId}`}>
+                <button className="hover:bg-sidebar-accent focus-visible:ring-ring flex w-full gap-2.5 rounded-md p-2 text-left transition-colors duration-150 outline-none focus-visible:ring-2" onClick={() => onOpen(h)}>
+                  {bot && <BotAvatar bot={bot} size="sm" className="mt-px" />}
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-sm font-medium">
+                      {h.name}
+                      <span className="text-muted-foreground font-normal">{h.role === "user" ? " · you wrote" : ""}</span>
+                    </span>
+                    <span className="text-muted-foreground line-clamp-3 text-sm break-words">
+                      <Snippet text={h.snippet} />
+                    </span>
                   </span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

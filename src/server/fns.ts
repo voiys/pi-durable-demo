@@ -38,6 +38,10 @@ export const deleteBot = createServerFn({ method: "POST" })
 export const setBotModel = createServerFn({ method: "POST" })
   .validator((d: { botId: string; model: string; thinkingLevel: string }) => d)
   .handler(async ({ data }) => (await bot(data.botId)).configureModel(data.model, data.thinkingLevel));
+/** The UI calls this while the bot's conversation is on screen; it clears the rail's unread dot. */
+export const markSeen = createServerFn({ method: "POST" })
+  .validator((botId: string) => botId)
+  .handler(async ({ data }) => env.User.getByName(await owner(data)).markSeen(data));
 export const botDetails = createServerFn({ method: "GET" })
   .validator((botId: string) => botId)
   .handler(async ({ data }): Promise<BotDetails> => {

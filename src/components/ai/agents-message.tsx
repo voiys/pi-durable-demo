@@ -1,11 +1,8 @@
-import { Link } from "@tanstack/react-router";
-import { BotIcon, CalendarClockIcon, CircleAlertIcon, CircleCheckIcon } from "lucide-react";
+import { useState } from "react";
 import { Markdown } from "@/components/ai/markdown";
-import { BotAvatar } from "@/components/bot-avatar";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { MessageAvatar, MessageContent, MessageHeader } from "@/components/ui/message";
-import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Marker, MarkerContent } from "@/components/ui/marker";
+import { cn } from "@/lib/utils";
 import type { BotSummary } from "@/shared";
 
 /** A message that is not the user's own words: user-role text the harness prefixes with where it came from
@@ -29,65 +26,53 @@ export function parseAgentMessage(text: string): AgentMsg | undefined {
   }
 }
 
-/**
- * An agent message in the thread, iMessage group-chat style. Another bot or a helper speaks like a person in a group:
- * its face, its name above a gray bubble. A helper's report, a failure and a routine firing are one quiet line that
- * opens to the text.
- */
-export function AgentMessage({ msg, bot, bots }: { msg: AgentMsg; bot: BotSummary; bots: BotSummary[] }) {
-  if (msg.kind === "report" || msg.kind === "failed" || msg.kind === "routine") {
-    const failed = msg.kind === "failed";
-    const title = msg.kind === "routine" ? `Routine: ${msg.from}` : failed ? `${msg.from} couldn't finish` : `${msg.from} reported back`;
-    return (
-      <MessageContent>
-        <Trace>
-          <TraceCollapsible defaultOpen={failed}>
-            <TraceCollapsibleTrigger>
-              <TraceLine status={failed ? "error" : undefined}>
-                <TraceIcon>{failed ? <CircleAlertIcon /> : msg.kind === "routine" ? <CalendarClockIcon /> : <CircleCheckIcon />}</TraceIcon>
-                <TraceTitle className="whitespace-normal">{title}</TraceTitle>
-              </TraceLine>
-            </TraceCollapsibleTrigger>
-            <TraceCollapsibleContent>
-              <Markdown>{msg.body}</Markdown>
-            </TraceCollapsibleContent>
-          </TraceCollapsible>
-        </Trace>
-      </MessageContent>
-    );
+/** Someone speaking in a thread besides the user: a bot (its color is its face) or a helper (a gray face), and where its
+ * own conversation is. `key` groups consecutive messages from them. */
+export type Sender = { key: string; name: string; color?: string; to?: { bot: string; agent?: string } };
+
+/** Another bot or a helper talking in this bot's thread, as a group-chat sender. Events are not senders. */
+export function agentSender(msg: AgentMsg, bot: BotSummary, bots: BotSummary[]): Sender {
+  if (msg.kind === "bot") {
+    const sender = bots.find((b) => b.name.toLowerCase() === msg.from.toLowerCase());
+    return { key: `bot:${msg.from.toLowerCase()}`, name: sender?.name ?? msg.from, color: sender?.color, to: sender && { bot: sender.id } };
   }
-  const sender = msg.kind === "bot" ? bots.find((b) => b.name.toLowerCase() === msg.from.toLowerCase()) : undefined;
-  const helper = msg.kind === "peer" ? bot.agents.find((a) => a.name === msg.from) : undefined;
-  const to = sender ? { bot: sender.id } : helper ? { bot: bot.id, agent: helper.session } : undefined;
+  const helper = bot.agents.find((a) => a.name === msg.from);
+  return { key: `helper:${msg.from}`, name: msg.from, to: helper && { bot: bot.id, agent: helper.session } };
+}
+
+/** True for what happens in the thread rather than someone saying it: a helper reporting back or failing, a routine firing. */
+export const isEvent = (msg: AgentMsg) => msg.kind === "report" || msg.kind === "failed" || msg.kind === "routine";
+
+const EVENT_TITLE: Record<"report" | "failed" | "routine", (from: string) => string> = {
+  report: (from) => `${from} reported back`,
+  failed: (from) => `${from} couldn't finish`,
+  routine: (from) => `Routine ${from} ran`,
+};
+
+/** A thread event as one centered caption ("Routine ai-news ran"); it opens to what was said, a failure starts open. */
+export function SystemEvent({ msg }: { msg: AgentMsg }) {
+  if (msg.kind !== "report" && msg.kind !== "failed" && msg.kind !== "routine") throw new Error(`not an event: ${msg.kind}`);
+  const failed = msg.kind === "failed";
+  const [open, setOpen] = useState(failed);
   return (
-    <>
-      <MessageAvatar className="self-end">
-        {sender ? (
-          <BotAvatar bot={sender} className="size-7 rounded-full text-xs" />
-        ) : (
-          <Avatar className="size-7">
-            <AvatarFallback>
-              <BotIcon className="size-3.5" />
-            </AvatarFallback>
-          </Avatar>
-        )}
-      </MessageAvatar>
-      <MessageContent>
-        <MessageHeader className="text-muted-foreground px-3 text-xs">
-          {to ? (
-            <Link to="/" search={to} className="hover:text-foreground transition-colors">
-              {sender?.name ?? msg.from}
-            </Link>
-          ) : (
-            msg.from
-          )}
-        </MessageHeader>
-        <Bubble variant="muted">
-          <BubbleContent className="rounded-[18px]">
-            <Markdown>{msg.body}</Markdown>
-          </BubbleContent>
-        </Bubble>
-      </MessageContent>
-    </>
+    <Collapsible open={open} onOpenChange={setOpen} className="flex flex-col items-center gap-2">
+      <Marker className="justify-center">
+        <MarkerContent>
+          <CollapsibleTrigger
+            className={cn(
+              "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 rounded-sm px-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-3",
+              failed && "text-destructive hover:text-destructive",
+            )}
+          >
+            {EVENT_TITLE[msg.kind](msg.from)}
+          </CollapsibleTrigger>
+        </MarkerContent>
+      </Marker>
+      <CollapsibleContent className="data-open:animate-accordion-down data-closed:animate-accordion-up w-full max-w-[520px] overflow-hidden duration-200 [--radix-accordion-content-height:var(--radix-collapsible-content-height)] motion-reduce:animate-none">
+        <div className="bg-canvas rounded-lg px-3.5 py-2.5 text-sm">
+          <Markdown>{msg.body}</Markdown>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

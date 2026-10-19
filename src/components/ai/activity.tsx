@@ -1,28 +1,12 @@
-// What a bot did while answering, in plain words: one summary line per run of tool calls ("Searched the web, read 2
-// pages and saved data"), opening to one line per step. Arguments, SQL and raw output never show as such; a step's detail
-// is what a person would want to see (the sources, the rows, the report).
+// How a bot's work reads in the thread (DESIGN.md §6 "Intent and outcome"): each tool call is the sentence the model
+// wrote for the person (its `intent`, src/server/intent.ts) and how that attempt went, in the same voice. A run reads
+// like a short paragraph; no tool names, arguments, SQL or JSON on the surface, no icons. Receipts (the sources, the rows)
+// open on request; a page read or a conversation reached is a link.
 import { Link } from "@tanstack/react-router";
-import {
-  ArchiveIcon,
-  ArrowUpRightIcon,
-  BookOpenIcon,
-  BotIcon,
-  BrainIcon,
-  CalendarClockIcon,
-  DatabaseIcon,
-  FileTextIcon,
-  GlobeIcon,
-  HistoryIcon,
-  SendIcon,
-  SparklesIcon,
-  UserPlusIcon,
-  UsersIcon,
-  WrenchIcon,
-} from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Markdown } from "@/components/ai/markdown";
-import { CodeBlock, CodeBlockContent } from "@/components/ui/code-block";
-import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace";
+import { Fragment, type ReactNode } from "react";
+import { clause, count, host, lower, past, prose } from "@/components/ai/intent";
+import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceDescription, TraceLine, TraceTitle } from "@/components/ui/trace";
+import { cn } from "@/lib/utils";
 import type { PiMessagePart } from "@/pi/transcript";
 import type { BotSummary } from "@/shared";
 
@@ -33,18 +17,23 @@ export type ToolResult = Extract<PiMessagePart, { type: "tool-result" }>;
  * an idle session was interrupted), this bot and all the user's bots (for names and links). */
 export type ToolContext = { results: Map<string, ToolResult>; running: boolean; bot: BotSummary; bots: BotSummary[] };
 
-/** One step in words. `summary` is the short past-tense phrase the run's summary line joins ("read 2 pages" counts). */
-type Step = { icon: ReactNode; doing: string; done: string; summary: string; detail?: ReactNode; href?: string; to?: { bot: string; agent?: string } };
-
-const host = (url: string) => {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
-  }
+/** One tool call in words. `detail`, `href` and `to` exist only once it is done. */
+type Step = {
+  id: string;
+  /** What the bot set out to do, progressive ("Checking …"); done lines show it in the past tense. Empty while a call
+   * streams in before its intent has. */
+  intent: string;
+  phase: "running" | "done" | "error" | "stopped";
+  /** How it went, the clause after the en dash: "3 sources", "didn't work: …", "stopped". */
+  outcome?: string;
+  /** Receipts a person would open: the sources, the rows. */
+  detail?: ReactNode;
+  /** The page it read, opening in a new tab. */
+  href?: string;
+  /** The conversation it reached. */
+  to?: { bot: string; agent?: string };
 };
-/** ` for “query”`, or nothing while the call's arguments are still streaming in. */
-const quoted = (prefix: string, s: unknown) => (String(s ?? "").trim() ? `${prefix} “${String(s).trim()}”` : "");
+
 const DAYS: Record<string, string> = { "*": "every day", "1-5": "weekdays", "0,6": "weekends", "6,0": "weekends", "0": "Sundays", "1": "Mondays", "2": "Tuesdays", "3": "Wednesdays", "4": "Thursdays", "5": "Fridays", "6": "Saturdays" };
 
 /** A cron schedule in words for the common shapes, else as written. Cron is UTC (src/server/bot.ts routines). */
@@ -56,269 +45,253 @@ export function cronText(cron: string) {
   return `on schedule ${cron} (UTC)`;
 }
 
-/** web_search output: "1. title\n   url (date)\n   snippet" per result (src/server/web.ts). */
-function searchResults(output: string) {
-  return [...output.matchAll(/^\d+\. (.*)\n {3}(\S+)[^\n]*\n {3}(.*)$/gm)].map(([, title, url, snippet]) => ({ title, url, snippet }));
-}
-
-/** Tables a SQL batch writes to, in order. */
-const writtenTables = (sql: string) => [...new Set([...sql.matchAll(/\b(?:insert\s+(?:or\s+\w+\s+)?into|create\s+(?:temp\w*\s+)?(?:table|view)\s+(?:if\s+not\s+exists\s+)?|update|delete\s+from)\s+["`]?(\w+)/gi)].map((m) => m[1]))];
-
 const output = (r: ToolResult | undefined) => r?.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n") ?? "";
 
+/** web_search output: "1. title\n   url (date)\n   snippet" per result (src/server/web.ts). */
+const searchResults = (out: string) => [...out.matchAll(/^\d+\. (.*)\n {3}(\S+)/gm)].map(([, title, url]) => ({ title, url }));
+
+/** sql output: a markdown table then "(N rows…)" (src/server/bot-data.ts), as cells with `\|` unescaped. */
+const tableCells = (out: string) => out.split("\n").slice(0, -1).map((line) => line.slice(2, -2).split(/(?<!\\) \| /).map((c) => c.replaceAll("\\|", "|")));
+
+/** Statements whose written-row count means data saved (a CREATE also counts rows written to sqlite_master). */
+const SAVES = /\b(insert|replace|update)\b/i;
+
 function describe(call: ToolCall, result: ToolResult | undefined, ctx: ToolContext): Step {
-  const a = (call.arguments ?? {}) as Record<string, string | number | boolean | undefined>;
+  const a = call.arguments as Record<string, string | undefined>;
   const out = output(result);
-  const botNamed = (name: unknown) => ctx.bots.find((b) => b.name.toLowerCase() === String(name ?? "").toLowerCase());
-  const s = (icon: ReactNode, doing: string, done: string, summary = done.charAt(0).toLowerCase() + done.slice(1), extra: Partial<Step> = {}): Step => ({ icon, doing, done, summary, ...extra });
+  const phase = result ? (result.error ? "error" : "done") : ctx.running ? "running" : "stopped";
+  // A tool's own one-line answer ("Sent to Scout.", "No routines.") is already an outcome in words.
+  const said = !out.includes("\n") && out.endsWith(".") && out.length <= 80 ? clause(out) : undefined;
+  const botNamed = (name = "") => ctx.bots.find((b) => b.name.toLowerCase() === name.toLowerCase());
+  const agentTo = (name = "") => {
+    const agent = ctx.bot.agents.find((x) => x.name === name);
+    return agent && { bot: ctx.bot.id, agent: agent.session };
+  };
+  /** `history` is the plain wording for older calls, made before every call carried an intent. `done` reads the
+   * result, so it runs only once there is one that worked. */
+  const step = (history: string, done?: () => Partial<Step>): Step => ({
+    id: call.id,
+    intent: a.intent?.trim() || (phase === "running" ? "" : history),
+    phase,
+    ...(phase === "done" ? { outcome: said, ...done?.() } : { outcome: phase === "error" ? `didn't work: ${clause(out)}` : phase === "stopped" ? "stopped" : undefined }),
+  });
   switch (call.name) {
-    case "web_search": {
-      const hits = searchResults(out);
-      const detail = hits.length > 0 && (
-        <Trace>
-          {hits.slice(0, 8).map((h) => (
-            <a key={h.url} href={h.url} target="_blank" rel="noreferrer">
-              <TraceLine>
-                <TraceIcon>
-                  <GlobeIcon />
-                </TraceIcon>
-                <TraceTitle>
-                  {h.title}
-                  <span className="sr-only"> (opens in a new tab)</span>
-                </TraceTitle>
-                <TraceDescription>{host(h.url)}</TraceDescription>
-              </TraceLine>
-            </a>
-          ))}
-        </Trace>
-      );
-      return s(<GlobeIcon />, `Searching the web${quoted(" for", a.query)}`, `Searched the web${quoted(" for", a.query)}`, "searched the web", { detail });
-    }
+    case "web_search":
+      return step(`Searching the web for “${a.query}”`, () => {
+        const hits = searchResults(out);
+        return hits.length ? { outcome: count(hits.length, "source"), detail: <Sources hits={hits} /> } : {};
+      });
     case "web_fetch":
-      return s(<BookOpenIcon />, `Reading ${host(String(a.url ?? ""))}`, `Read ${host(String(a.url ?? ""))}`, "page", { href: String(a.url ?? "") });
-    case "sql": {
-      if (a.schema) return s(<DatabaseIcon />, "Checking its data", "Checked its data");
-      const tables = writtenTables(String(a.query ?? ""));
-      const table = /^\|/.test(out) && <Markdown>{out.replace(/\n\(\d+ rows.*\)$/, "")}</Markdown>;
-      return tables.length
-        ? s(<DatabaseIcon />, `Saving data to ${tables.join(", ")}`, `Saved data to ${tables.join(", ")}`, "saved data", { detail: table })
-        : s(<DatabaseIcon />, "Looking at its data", "Looked at its data", "analyzed data", { detail: table });
-    }
+      return step(`Reading ${host(a.url ?? "")}`, () => {
+        const url = out.slice(0, out.indexOf("\n"));
+        return { outcome: /^\S+\n\n# (.+)/.exec(out)?.[1].trim() || host(url), href: url };
+      });
+    case "sql":
+      if (a.schema) return step("Looking over its tables");
+      return step("Working with its data", () => {
+        const rows = /^\((\d+) rows/m.exec(out)?.[1];
+        if (rows) return { outcome: rows === "0" ? "no rows" : count(Number(rows), "row"), detail: rows !== "0" && <Rows out={out} /> };
+        const written = /^OK: (\d+) rows written/.exec(out)?.[1];
+        if (!written) throw new Error(`Unexpected sql output: ${out.slice(0, 80)}`);
+        return { outcome: SAVES.test(a.query ?? "") ? `${count(Number(written), "row")} saved` : undefined };
+      });
     case "library":
-      if (a.action === "save") return s(<FileTextIcon />, `Writing a report: ${a.title ?? ""}`, `Wrote a report: ${a.title ?? ""}`, "wrote a report");
-      if (a.action === "read") return s(<FileTextIcon />, "Opening a report", "Opened a report");
-      return s(<FileTextIcon />, "Checking its library", "Checked its library");
+      if (a.action === "save") return step("Writing up a report", () => ({ outcome: `“${/^Saved report \d+: (.*)$/.exec(out)![1]}”` }));
+      return step(a.action === "read" ? "Opening a report" : "Checking its library");
     case "routines":
-      if (a.action === "add") return s(<CalendarClockIcon />, `Setting up ${a.name ?? "a routine"}`, `Set up ${a.name}, ${cronText(String(a.cron ?? ""))}`, "set up a routine", { detail: a.prompt && <p className="text-muted-foreground">{String(a.prompt)}</p> });
-      if (a.action === "remove") return s(<CalendarClockIcon />, `Removing ${a.name ?? "a routine"}`, `Removed ${a.name}`, "removed a routine");
-      return s(<CalendarClockIcon />, "Checking its routines", "Checked its routines");
+      if (a.action === "add") return step(`Setting up the routine “${a.name}”`, () => ({ outcome: `runs ${cronText(a.cron!)}` }));
+      return step(a.action === "remove" ? `Removing the routine “${a.name}”` : "Checking its routines");
     case "search":
-      return s(<HistoryIcon />, `Searching its memory${quoted(" for", a.text)}`, `Searched its memory${quoted(" for", a.text)}`, "searched its memory");
+      return step(`Searching its memory for “${a.text}”`, () => {
+        const hits = /^(\d+) /.exec(out)?.[1];
+        return hits ? { outcome: count(Number(hits), "match", "matches") } : {};
+      });
     case "zoom":
-      return s(<HistoryIcon />, "Looking back through earlier messages", "Looked back through earlier messages", "looked back");
+      return step("Looking back through earlier messages");
     case "date":
-      return s(<HistoryIcon />, "Checking when that was", "Checked when that was", "looked back");
+      return step("Checking when that was said");
     case "bots": {
       const target = botNamed(a.name);
-      const name = target?.name ?? String(a.name ?? "a bot");
       const to = target && { bot: target.id };
-      if (a.action === "send") return s(<SendIcon />, `Messaging ${name}`, `Messaged ${name}`, `messaged ${name}`, { to, detail: a.message && <Markdown>{String(a.message)}</Markdown> });
-      if (a.action === "last") return s(<SendIcon />, `Checking in with ${name}`, `Checked in with ${name}`, `checked in with ${name}`, { to });
-      return s(<UsersIcon />, "Looking at your bots", "Looked at your bots");
+      if (a.action === "send") return step(`Messaging ${a.name}`, () => ({ to }));
+      if (a.action === "last") return step(`Checking in with ${a.name}`, () => ({ outcome: `heard back from ${a.name}`, to }));
+      return step("Looking at your bots");
     }
     case "subagent": {
-      const name = String(a.name ?? "a helper");
-      const agent = ctx.bot.agents.find((x) => x.name === name);
-      const to = agent && { bot: ctx.bot.id, agent: agent.session };
-      const detail = a.message && <Markdown>{String(a.message)}</Markdown>;
-      if (a.action === "spawn") return s(<UserPlusIcon />, `Bringing in ${name}`, `Brought in ${name}`, `brought in ${name}`, { to, detail });
-      if (a.action === "send") return s(<SendIcon />, `Briefing ${name}`, `Briefed ${name}`, `briefed ${name}`, { to, detail });
-      if (a.action === "stop") return s(<ArchiveIcon />, `Stopping ${name}`, `Stopped ${name}`);
-      return s(<ArchiveIcon />, `Letting ${name} go`, `Let ${name} go`);
+      const verb = { spawn: "Bringing in", send: "Briefing", stop: "Pausing" }[a.action ?? ""];
+      return step(verb ? `${verb} ${a.name}` : `Letting ${a.name} go`, () => ({ to: agentTo(a.name) }));
     }
     case "agents":
-      if (a.action === "send") return s(<SendIcon />, `Messaging ${a.name ?? "a helper"}`, `Messaged ${a.name}`, `messaged ${a.name}`, { detail: a.message && <Markdown>{String(a.message)}</Markdown> });
-      return s(<BotIcon />, "Checking on its helpers", "Checked on its helpers");
+      if (a.action === "send") return step(`Messaging ${a.name}`, () => ({ to: agentTo(a.name) }));
+      return step("Checking on the other helpers");
     case "fleet": {
-      const name = String(a.name ?? "a bot");
       const target = botNamed(a.action === "rename" ? a.newName : a.name);
       const to = target && { bot: target.id };
-      if (a.action === "create") return s(<SparklesIcon />, `Creating ${name}`, `Created ${name}`, `created ${name}`, { to, detail: a.instructions && <p className="text-muted-foreground">{String(a.instructions)}</p> });
-      if (a.action === "rename") return s(<BotIcon />, `Renaming ${name}`, `Renamed ${name} to ${a.newName}`, `renamed ${name}`, { to });
-      if (a.action === "instruct") return s(<BotIcon />, `Updating ${name}`, `Updated ${name}'s instructions`, `updated ${name}`, { to, detail: a.instructions && <p className="text-muted-foreground">{String(a.instructions)}</p> });
-      if (a.action === "delete") return s(<ArchiveIcon />, `Deleting ${name}`, `Deleted ${name}`, `deleted ${name}`);
-      return s(<UsersIcon />, "Looking at your bots", "Looked at your bots");
+      if (a.action === "create") return step(`Creating ${a.name}`, () => ({ to }));
+      if (a.action === "rename") return step(`Renaming ${a.name} to ${a.newName}`, () => ({ to }));
+      if (a.action === "instruct") return step(`Updating ${a.name}'s instructions`, () => ({ to }));
+      if (a.action === "delete") return step(`Deleting ${a.name}`);
+      return step("Looking at your bots");
     }
   }
-  const tool = call.name.replace(/[_-]+/g, " ");
-  return s(<WrenchIcon />, `Using ${tool}`, `Used ${tool}`);
+  // A call to a tool the bot doesn't have (the model named one that isn't there); its result is the error.
+  return step("Trying something it can't do");
 }
 
-/** "a, b and c", with repeated page reads counted ("read 3 pages"). */
-function summarize(steps: Step[]) {
-  const pages = steps.filter((st) => st.summary === "page").length;
-  const phrases = [...new Set(steps.map((st) => (st.summary === "page" ? (pages === 1 ? `read ${host(st.href ?? "")}` : `read ${pages} pages`) : st.summary)))];
-  const text = phrases.length > 1 ? `${phrases.slice(0, -1).join(", ")} and ${phrases.at(-1)}` : phrases[0];
-  return text.charAt(0).toUpperCase() + text.slice(1);
+/** A search's results as links: title, then host. */
+function Sources({ hits }: { hits: { title: string; url: string }[] }) {
+  return (
+    <Trace>
+      {hits.map((h, i) => (
+        <a key={i} href={h.url} target="_blank" rel="noreferrer">
+          <TraceLine>
+            <TraceTitle>
+              {h.title}
+              <span className="sr-only"> (opens in a new tab)</span>
+            </TraceTitle>
+            <TraceDescription className="text-muted-foreground">{host(h.url)}</TraceDescription>
+          </TraceLine>
+        </a>
+      ))}
+    </Trace>
+  );
 }
 
-/** One step's line: a link opens the page or conversation, a detail opens underneath, an error opens by default. */
-function StepRow({ step, phase, error }: { step: Step; phase: "running" | "done" | "error" | "interrupted"; error: string }) {
-  const line = (
-    <TraceLine status={phase === "running" ? "running" : phase === "error" ? "error" : undefined}>
-      <TraceIcon>{step.icon}</TraceIcon>
-      <TraceTitle className="whitespace-normal">{phase === "running" || phase === "interrupted" ? step.doing : phase === "error" ? `Couldn't finish: ${step.doing.charAt(0).toLowerCase()}${step.doing.slice(1)}` : step.done}</TraceTitle>
-      {phase === "interrupted" && <TraceDescription>stopped</TraceDescription>}
-      {step.href && phase === "done" && (
-        <TraceIcon>
-          <ArrowUpRightIcon />
-        </TraceIcon>
-      )}
+/** A query's rows as a small table, scrolling inside its hairline frame when taller than 16rem or wider than the thread. */
+function Rows({ out }: { out: string }) {
+  const [head, , ...body] = tableCells(out);
+  return (
+    <div className="max-h-64 overflow-auto rounded-md border">
+      <table className="text-sm tabular-nums">
+        <thead className="bg-background text-muted-foreground sticky top-0">
+          <tr>
+            {head.map((c, i) => (
+              <th key={i} scope="col" className="px-2 py-1 text-left font-medium whitespace-nowrap">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="text-foreground">
+          {body.map((row, i) => (
+            <tr key={i} className="border-t">
+              {row.map((c, j) => (
+                <td key={j} className="px-2 py-1 align-top">
+                  {c}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** The intent, past tense once done, then how it went after an en dash (a failure in destructive ink, and in words). */
+function StepLine({ step }: { step: Step }) {
+  return (
+    <TraceLine status={step.phase === "running" ? "running" : undefined}>
+      <TraceTitle className="whitespace-normal">
+        {step.phase === "done" ? past(step.intent) : step.intent}
+        {step.outcome && (
+          <>
+            {" – "}
+            <span className={cn(step.phase === "error" && "text-destructive")}>{step.outcome}</span>
+          </>
+        )}
+        {step.href && <span className="sr-only"> (opens in a new tab)</span>}
+      </TraceTitle>
     </TraceLine>
   );
-  if (phase === "error")
+}
+
+/** Behavior wraps the line (shadcn rules/chat.md): receipts open underneath, a page or a conversation is a link. */
+function StepRow({ step }: { step: Step }) {
+  const line = <StepLine step={step} />;
+  if (step.detail)
     return (
-      <TraceCollapsible defaultOpen>
+      <TraceCollapsible>
         <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
-        <TraceCollapsibleContent>
-          <CodeBlock size="sm" variant="destructive">
-            <CodeBlockContent wrap className="max-h-64">
-              {error || "No details"}
-            </CodeBlockContent>
-          </CodeBlock>
-        </TraceCollapsibleContent>
+        <TraceCollapsibleContent>{step.detail}</TraceCollapsibleContent>
       </TraceCollapsible>
     );
-  if (phase !== "done") return line;
   if (step.href)
     return (
       <a href={step.href} target="_blank" rel="noreferrer">
         {line}
       </a>
     );
-  if (step.detail)
+  if (step.to)
     return (
-      <TraceCollapsible>
-        <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
-        <TraceCollapsibleContent className="flex flex-col gap-2">
-          {step.detail}
-          {step.to && (
-            <Link to="/" search={step.to} className="text-muted-foreground hover:text-foreground w-fit text-xs underline-offset-4 transition-colors hover:underline">
-              Open conversation
-            </Link>
-          )}
-        </TraceCollapsibleContent>
-      </TraceCollapsible>
+      <Link to="/" search={step.to}>
+        {line}
+      </Link>
     );
-  return step.to ? (
-    <Link to="/" search={step.to}>
-      {line}
-    </Link>
-  ) : (
-    line
-  );
+  return line;
 }
 
-/** pi reasoning: hidden detail of the run; while it streams, the run's summary says "Thinking". */
-function Thought({ text }: { text: string }) {
+/** More than two settled steps fold into one line written from what worked ("3 things: checked …, saved …, and wrote
+ * …"), with what didn't counted after it; it opens to every step. */
+function Summary({ steps }: { steps: Step[] }) {
+  const things = [...new Set(steps.filter((s) => s.phase === "done").map((s) => lower(past(s.intent))))];
+  const failed = steps.filter((s) => s.phase === "error").length;
+  const notes = [
+    things.length > 0 && `${count(things.length, "thing")}: ${prose(things.length > 3 ? [...things.slice(0, 3), `${things.length - 3} more`] : things)}`,
+    failed > 0 && <span className="text-destructive">{things.length ? failed : count(failed, "attempt")} didn't work</span>,
+    steps.some((s) => s.phase === "stopped") && "stopped",
+  ].filter(Boolean);
   return (
     <TraceCollapsible>
       <TraceCollapsibleTrigger>
         <TraceLine>
-          <TraceIcon>
-            <BrainIcon />
-          </TraceIcon>
-          <TraceTitle>Thought it through</TraceTitle>
+          <TraceTitle className="whitespace-normal">
+            {notes.map((note, i) => (
+              <Fragment key={i}>
+                {i > 0 && " – "}
+                {note}
+              </Fragment>
+            ))}
+          </TraceTitle>
         </TraceLine>
       </TraceCollapsibleTrigger>
       <TraceCollapsibleContent>
-        <Markdown>{text}</Markdown>
+        <Trace>
+          {steps.map((s) => (
+            <StepRow key={s.id} step={s} />
+          ))}
+        </Trace>
       </TraceCollapsibleContent>
     </TraceCollapsible>
   );
 }
 
 /** A running line that says what the bot is doing now; shimmer comes from TraceLine's running status. */
-export function Working({ label = "Thinking" }: { label?: string }) {
+export function Working({ label = "Thinking…" }: { label?: string }) {
   return (
     <TraceLine status="running">
-      <TraceIcon>
-        <SparklesIcon />
-      </TraceIcon>
       <TraceTitle className="whitespace-normal">{label}</TraceTitle>
     </TraceLine>
   );
 }
 
-/** How long a live run has taken, in seconds, frozen when it ends. */
-function useElapsed(live: boolean) {
-  const started = useRef<number>(undefined);
-  const [seconds, setSeconds] = useState<number>();
-  useEffect(() => {
-    if (!live) return;
-    started.current ??= Date.now();
-    const t = setInterval(() => setSeconds(Math.round((Date.now() - started.current!) / 1000)), 1000);
-    return () => clearInterval(t);
-  }, [live]);
-  return seconds;
-}
-
 /**
- * One run of thinking and tool calls (chat-demo, Trace summary pattern): while live, the current step in words; after,
- * a summary that opens to every step. A run of only thinking shows nothing once done (the answer speaks for it).
+ * One run of thinking and tool calls. Settled steps read as lines, or past two as a summary that opens to them; running
+ * steps follow with their intent shimmering; a live run with nothing running says "Thinking…". Thinking itself never
+ * shows once settled (the answer speaks for it).
  */
 export function Activity({ parts, live, ctx }: { parts: readonly PiMessagePart[]; live: boolean; ctx: ToolContext }) {
-  const seconds = useElapsed(live);
-  const calls = parts.filter((p): p is ToolCall => p.type === "tool-call");
-  const steps = calls.map((call) => {
-    const result = ctx.results.get(call.id);
-    const phase = result ? (result.error ? "error" : "done") : ctx.running ? "running" : "interrupted";
-    return { call, step: describe(call, result, ctx), phase, error: output(result) } as const;
-  });
-  const current = steps.findLast((s) => s.phase === "running");
-  if (live)
-    return (
-      <Trace>
-        <Working label={current?.step.doing ?? "Thinking"} />
-      </Trace>
-    );
-  if (!steps.length) return null;
-  // One step needs no summary over it: the step's own line says it all.
-  if (steps.length === 1 && !parts.some((p) => p.type === "thinking" && p.text.trim()))
-    return (
-      <Trace>
-        <StepRow {...steps[0]} />
-      </Trace>
-    );
-  const failed = steps.filter((s) => s.phase === "error").length;
-  // The summary names only what worked; failures are counted beside it and open by default.
-  const worked = steps.filter((s) => s.phase !== "error").map((s) => s.step);
-  const summary = (
-    <TraceLine status={current ? "running" : worked.length ? undefined : "error"}>
-      <TraceIcon>
-        <SparklesIcon />
-      </TraceIcon>
-      <TraceTitle className="whitespace-normal">{current ? current.step.doing : worked.length ? summarize(worked) : "Couldn't finish"}</TraceTitle>
-      {failed > 0 && worked.length > 0 && <TraceDescription className="text-destructive">{failed} didn't work</TraceDescription>}
-      {!failed && seconds !== undefined && <TraceDescription>{seconds}s</TraceDescription>}
-    </TraceLine>
-  );
+  const steps = parts.flatMap((p) => (p.type === "tool-call" ? [describe(p, ctx.results.get(p.id), ctx)] : []));
+  const settled = steps.filter((s) => s.phase !== "running");
+  const running = steps.filter((s) => s.phase === "running" && s.intent);
+  if (!live && !settled.length && !running.length) return null;
   return (
     <Trace>
-      <TraceCollapsible defaultOpen={failed > 0}>
-        <TraceCollapsibleTrigger>{summary}</TraceCollapsibleTrigger>
-        <TraceCollapsibleContent>
-          <Trace>
-            {parts.map((part, i) =>
-              part.type === "thinking" ? (
-                part.text.trim() && <Thought key={i} text={part.text} />
-              ) : part.type === "tool-call" ? (
-                <StepRow key={part.id} {...steps.find((s) => s.call.id === part.id)!} />
-              ) : null,
-            )}
-          </Trace>
-        </TraceCollapsibleContent>
-      </TraceCollapsible>
+      {settled.length > 2 ? <Summary steps={settled} /> : settled.map((s) => <StepRow key={s.id} step={s} />)}
+      {running.map((s) => (
+        <StepRow key={s.id} step={s} />
+      ))}
+      {live && !running.length && <Working />}
     </Trace>
   );
 }
