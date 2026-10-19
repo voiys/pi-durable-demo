@@ -69,12 +69,17 @@ function describe(call: ToolCall, result: ToolResult | undefined, ctx: ToolConte
   };
   /** `history` is the plain wording for older calls, made before every call carried an intent. `done` reads the
    * result, so it runs only once there is one that worked. */
-  const step = (history: string, done?: () => Partial<Step>): Step => ({
-    id: call.id,
-    intent: a.intent?.trim() || (phase === "running" ? "" : history),
-    phase,
-    ...(phase === "done" ? { outcome: said, ...done?.() } : { outcome: phase === "error" ? `didn't work: ${clause(out)}` : phase === "stopped" ? "stopped" : undefined }),
-  });
+  const step = (history: string, done?: () => Partial<Step>): Step => {
+    const s: Step = {
+      id: call.id,
+      intent: a.intent?.trim() || (phase === "running" ? "" : history),
+      phase,
+      ...(phase === "done" ? { outcome: said, ...done?.() } : { outcome: phase === "error" ? `didn't work: ${clause(out)}` : phase === "stopped" ? "stopped" : undefined }),
+    };
+    // An outcome that only repeats the line ("Created scribe – created scribe") says nothing new.
+    const plain = (t = "") => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    return s.outcome && plain(s.outcome) === plain(past(s.intent)) ? { ...s, outcome: undefined } : s;
+  };
   switch (call.name) {
     case "web_search":
       return step(`Searching the web for “${a.query}”`, () => {
