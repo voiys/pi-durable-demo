@@ -1,6 +1,6 @@
 import { Agent } from "agents";
 import type { Env } from "../env.ts";
-import { botObjectName, type GroupMessage, type GroupState } from "../shared.ts";
+import { botObjectName, replyText, type GroupMessage, type GroupState } from "../shared.ts";
 
 /** Bot posts one message of the user's can set off, so bots @-mentioning each other can't loop forever. */
 const BOT_POSTS_PER_ROUND = 6;
@@ -10,17 +10,26 @@ const BOT_POSTS_PER_ROUND = 6;
  * The room holds only its transcript (agent state, synced to the browser). Each member bot answers in its own group
  * conversation and remembers what it saw in its own memory (Bot.receiveGroup). RPC only; nothing is `@callable`.
  *
- * Who hears what: the user's message goes to every member, or only to the ones it @-mentions; a bot's message goes
- * only to the bots it @-mentions, within the round's budget.
+ * Who hears what: the user's message goes to every member, or only to the ones it @-mentions or replies to; a bot's
+ * message goes only to the bots it @-mentions, within the round's budget.
  */
 export class Group extends Agent<Env, GroupState> {
-  initialState: GroupState = { title: "", members: [], messages: [], typing: [] };
+  initialState: GroupState = { title: "", purpose: "", members: [], messages: [], typing: [] };
   readonly #userId = () => this.name.split("--")[0];
   #budget = BOT_POSTS_PER_ROUND;
 
-  init(title: string, members: { id: string; name: string }[]) {
+  onStart() {
+    if (this.state.purpose === undefined) this.setState({ ...this.state, purpose: "" }); // rooms from before `purpose`
+  }
+
+  init(title: string, purpose: string, members: { id: string; name: string }[]) {
     if (members.length < 2) throw new Error("A group needs at least two bots");
-    this.setState({ title, members, messages: [], typing: [] });
+    this.setState({ title, purpose, members, messages: [], typing: [] });
+  }
+
+  /** The members get the new title and purpose with the next message they hear (Bot.receiveGroup). */
+  update(patch: { title?: string; purpose?: string }) {
+    this.setState({ ...this.state, ...patch });
   }
 
   #post(message: Omit<GroupMessage, "id" | "ts">) {
@@ -29,26 +38,29 @@ export class Group extends Agent<Env, GroupState> {
     return posted;
   }
 
-  /** Members a message reaches: the ones it @-mentions, or for the user's message with no mentions, all of them. */
-  #audience(text: string, from?: string) {
-    const mentioned = this.state.members.filter((m) => new RegExp(`(^|\\W)@${m.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
+  /** Members a message reaches: the ones it @-mentions or replies to, or for the user's message with neither, all of them. */
+  #audience(text: string, from?: string, repliedTo?: string | null) {
+    const mentioned = this.state.members.filter((m) => m.id === repliedTo || new RegExp(`(^|\\W)@${m.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text));
     return (mentioned.length || from ? mentioned : this.state.members).filter((m) => m.id !== from);
   }
 
-  #deliver(text: string, sender: string, from?: string) {
-    const audience = this.#audience(text, from);
+  #deliver(text: string, sender: string, from?: string, replied?: GroupMessage) {
+    const audience = this.#audience(text, from, replied?.from);
+    if (replied) text = replyText(`${replied.from ? this.state.members.find((m) => m.id === replied.from)!.name : "the user"} said:\n${replied.text}`, text);
     this.setState({ ...this.state, typing: [...new Set([...this.state.typing, ...audience.map((m) => m.id)])] });
     const groupId = this.name.split("--")[1];
     for (const m of audience)
-      this.ctx.waitUntil(this.env.Bot.getByName(botObjectName(this.#userId(), m.id)).receiveGroup(groupId, this.state.title, this.state.members.map((x) => x.name), sender, text));
+      this.ctx.waitUntil(this.env.Bot.getByName(botObjectName(this.#userId(), m.id)).receiveGroup(groupId, this.state.title, this.state.purpose, this.state.members.map((x) => x.name), sender, text));
   }
 
-  /** The user posts: a new round. */
-  userPost(text: string) {
+  /** The user posts, optionally replying to the room message `replyTo` (a bot's message reaches that bot): a new round. */
+  userPost(text: string, replyTo?: string) {
     if (!text.trim()) throw new Error("Empty message");
+    const replied = replyTo === undefined ? undefined : this.state.messages.find((m) => m.id === replyTo);
+    if (replyTo !== undefined && !replied) throw new Error(`No message ${replyTo} in this group`);
     this.#budget = BOT_POSTS_PER_ROUND;
-    this.#post({ from: null, text });
-    this.#deliver(text, "the user");
+    this.#post({ from: null, text, ...(replied && { replyTo }) });
+    this.#deliver(text, "the user", undefined, replied);
   }
 
   /** A member bot's answer to what it heard (`null` when it had nothing to add). */

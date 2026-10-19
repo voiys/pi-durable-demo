@@ -314,7 +314,7 @@ function App() {
             {search.panel === "search" ? (
               <SearchPanel bots={bots} />
             ) : group ? (
-              <GroupPanel key={group.id} group={group} bots={bots} onDisbanded={() => navigate({ search: {} })} />
+              <GroupPanel key={group.id} userId={user.id} group={group} bots={bots} onDisbanded={() => navigate({ search: {} })} />
             ) : (
               bot && (
                 <BotPanel

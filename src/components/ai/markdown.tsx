@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { Streamdown, useIsCodeFenceIncomplete, type AnimateOptions, type ExtraProps } from "streamdown";
+import { Streamdown, useIsCodeFenceIncomplete, type ExtraProps } from "streamdown";
 import { CodeBlock, CodeBlockActions, CodeBlockContent, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from "@/components/ui/code-block";
 import { cn } from "@/lib/utils";
 
@@ -35,9 +35,6 @@ function MarkdownCode({ node, className, children, ...props }: ComponentProps<"c
 const MARKDOWN_COMPONENTS = { code: MarkdownCode };
 // Off: Streamdown asks before opening a link in a modal, and there are no modals here (research/ui-decisions.md).
 const LINK_SAFETY = { enabled: false };
-// Streamed words fade in (opacity only, so reduced motion keeps it), 200ms ease-out, 40ms apart (Streamdown's default
-// stagger, capped 320ms behind the stream so a fast reply never lags).
-const ANIMATE: AnimateOptions = { animation: "fadeIn", duration: 200, easing: "ease-out", sep: "word" };
 
 /**
  * Reading type for replies (DESIGN.md §4): sizes are relative, so the text inherits the bubble's 15px/1.45 (or a panel's
@@ -56,17 +53,14 @@ const PROSE = cn(
   "[&_[data-streamdown=table-cell]]:px-3 [&_[data-streamdown=table-cell]]:py-1.5 [&_[data-streamdown=table-cell]]:text-[0.87em] [&_[data-streamdown=table-header-cell]]:px-3 [&_[data-streamdown=table-header-cell]]:py-1.5 [&_[data-streamdown=table-header-cell]]:text-[0.87em] [&_[data-streamdown=table-header-cell]]:font-semibold",
 );
 
-/** Markdown for replies, agent messages and reasoning. While `streaming`, Streamdown fades new words in and shows a caret. */
-export function Markdown({ streaming = false, className, ...props }: { streaming?: boolean } & ComponentProps<typeof Streamdown>) {
+/** Markdown for replies, agent messages and reasoning. A reply is shown whole, once written (typing, then sent). */
+export function Markdown({ className, ...props }: ComponentProps<typeof Streamdown>) {
   return (
     <Streamdown
       components={MARKDOWN_COMPONENTS}
       controls={false}
       linkSafety={LINK_SAFETY}
       className={cn(PROSE, className)}
-      isAnimating={streaming}
-      animated={ANIMATE}
-      caret={streaming ? "block" : undefined}
       {...props}
     />
   );

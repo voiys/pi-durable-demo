@@ -76,7 +76,7 @@ export function toTurns(messages: readonly PiMessage[]): PiTurn[] {
     if (role !== "user" && role !== "assistant") continue;
     const last = turns.at(-1);
     if (role === "assistant" && last?.role === "assistant")
-      turns[turns.length - 1] = { ...last, parts: [...last.parts, ...message.parts], error: message.error ?? last.error, ids: [...last.ids, id], live: id === LIVE_ID };
+      turns[turns.length - 1] = { ...last, parts: [...last.parts, ...message.parts], stopReason: message.stopReason, error: message.error ?? last.error, ids: [...last.ids, id], live: id === LIVE_ID };
     else turns.push({ ...message, role, ids: [id], live: id === LIVE_ID });
   }
   return turns;

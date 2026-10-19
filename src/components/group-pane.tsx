@@ -5,16 +5,20 @@ import { Markdown } from "@/components/ai/markdown";
 import type { Sender } from "@/components/ai/agents-message";
 import { BotAvatar } from "@/components/bot-avatar";
 import { ConfirmSwap, InlineConfirm, QUIET } from "@/components/inline-confirm";
-import { breaksTime, Composer, HeaderBar, Said, Status, Thread, ThreadEmpty, ThreadItem, ThreadRow, ThreadSkeleton, TimeDivider, WorkingRow } from "@/components/bot-pane";
+import { breaksTime, Composer, HeaderBar, Said, Status, Thread, ThreadEmpty, ThreadItem, ThreadRow, ThreadSkeleton, TimeDivider, WorkingRow, YourSaid } from "@/components/bot-pane";
+import { CAPTION, Saved, useField } from "@/components/bot-panel";
+import { QuoteProvider } from "@/components/quotes";
 import { Button } from "@/components/ui/button";
 import { EmptyHeader } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { Item, ItemContent, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SETTLE, SettleEmpty, SLIDE_UP, useCalm } from "@/lib/motion";
 import { cn, fail } from "@/lib/utils";
-import { createGroup, disbandGroup, postToGroup } from "@/server/fns";
+import { createGroup, disbandGroup, postToGroup, updateGroup } from "@/server/fns";
 import { botObjectName, type BotSummary, type GroupState, type GroupSummary } from "@/shared";
 
 /** A few member faces, overlapped: `md` stacks them in a 36px tile for the rail, `sm` and `lg` line them up. */
@@ -42,13 +46,15 @@ export function ThreadHeader({ group, members, detailsOpen, onToggleDetails }: {
   return <HeaderBar face={<GroupAvatar members={members} size="sm" />} name={group.title} detailsOpen={detailsOpen} onToggleDetails={onToggleDetails} />;
 }
 
+/** A group room's synced state (Group DO), for its thread and its details. */
+const useRoom = (userId: string, groupId: string) => useAgent<GroupState>({ agent: "group", name: botObjectName(userId, groupId) }).state;
+
 const names = (list: string[]) => (list.length < 3 ? list.join(" and ") : `${list.slice(0, -1).join(", ")} and ${list.at(-1)}`);
 
 /** A group chat, the same thread as a bot's: you on the right in blue, each bot on the left with its face and name
  * (iMessage group). Bots working on what they just heard show under your message, or on a line of their own. */
 export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: string; bots: BotSummary[] }) {
-  const room = useAgent<GroupState>({ agent: "group", name: botObjectName(userId, groupId) });
-  const state = room.state;
+  const state = useRoom(userId, groupId);
   const [openedAt] = useState(Date.now);
   // A bot in a group can't be deleted (src/server/user.ts deleteBot), so every speaker is one of the user's bots.
   const member = (id: string) => {
@@ -61,47 +67,58 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
   const typing = state ? names(state.typing.map((id) => sender(id).name)) : "";
   const working = typing && `${typing} ${state!.typing.length === 1 ? "is" : "are"} working…`;
   const anchorAt = messages.findLastIndex((m) => m.from === null);
+  const said = (id: string) => {
+    const m = messages.find((x) => x.id === id);
+    if (!m) throw new Error(`Group message ${id} replies to a message the room doesn't have`);
+    return { sender: m.from ? sender(m.from).name : "You", text: m.text };
+  };
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Thread busy={!!working}>
-        {!state && <ThreadSkeleton />}
-        {state && messages.length === 0 && (
-          <ThreadEmpty
-            face={<GroupAvatar members={state.members.map((m) => member(m.id))} size="lg" />}
-            title={state.title}
-            description="Everyone here hears your messages. @mention a bot to talk to just that one; bots hand work to each other the same way."
-          />
-        )}
-        {messages.map((m, i) => {
-          const prev = messages[i - 1];
-          const next = messages[i + 1];
-          const divides = breaksTime(prev?.ts, m.ts);
-          const first = divides || prev.from !== m.from;
-          const last = !next || breaksTime(m.ts, next.ts) || next.from !== m.from;
-          const mine = m.from === null;
-          const enter = m.ts >= openedAt;
-          return (
-            <Fragment key={m.id}>
-              {divides && <TimeDivider id={`time:${m.id}`} ts={m.ts} enter={enter} />}
-              <ThreadItem id={m.id} first={first} enter={enter} mine={mine} anchor={i === anchorAt}>
-                <ThreadRow mine={mine} sender={mine ? undefined : sender(m.from!)} first={first} last={last}>
-                  <Said mine={mine} tail={last}>
-                    {mine ? m.text : <Markdown>{m.text}</Markdown>}
-                  </Said>
-                  {mine && !next && <Status working={!!working}>{working || "Delivered"}</Status>}
-                </ThreadRow>
-              </ThreadItem>
-            </Fragment>
-          );
-        })}
-        {working && messages.at(-1)?.from !== null && <WorkingRow label={working} />}
-      </Thread>
-      <Composer
-        onSend={(text) => void postToGroup({ data: { groupId, text } }).catch(fail("send to the group"))}
-        ready={!!state}
-        placeholder={state ? `Message ${state.title}` : "Connecting…"}
-      />
-    </div>
+    <QuoteProvider>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Thread busy={!!working}>
+          {!state && <ThreadSkeleton />}
+          {state && messages.length === 0 && (
+            <ThreadEmpty
+              face={<GroupAvatar members={state.members.map((m) => member(m.id))} size="lg" />}
+              title={state.title}
+              description={state.purpose || "Everyone here hears your messages. @mention a bot or reply to its message to talk to just that one; bots hand work to each other the same way."}
+            />
+          )}
+          {messages.map((m, i) => {
+            const prev = messages[i - 1];
+            const next = messages[i + 1];
+            const divides = breaksTime(prev?.ts, m.ts);
+            const first = divides || prev.from !== m.from;
+            const last = !next || breaksTime(m.ts, next.ts) || next.from !== m.from;
+            const mine = m.from === null;
+            const enter = m.ts >= openedAt;
+            return (
+              <Fragment key={m.id}>
+                {divides && <TimeDivider id={`time:${m.id}`} ts={m.ts} enter={enter} />}
+                <ThreadItem id={m.id} first={first} enter={enter} mine={mine} anchor={i === anchorAt}>
+                  <ThreadRow mine={mine} sender={mine ? undefined : sender(m.from!)} first={first} last={last}>
+                    {mine ? (
+                      <YourSaid text={m.text} tail={last} id={m.id} replied={m.replyTo ? said(m.replyTo) : undefined} />
+                    ) : (
+                      <Said tail={last} reply={{ sender: sender(m.from!).name, text: m.text, replyTo: m.id }}>
+                        <Markdown>{m.text}</Markdown>
+                      </Said>
+                    )}
+                    {mine && !next && <Status working={!!working}>{working || "Delivered"}</Status>}
+                  </ThreadRow>
+                </ThreadItem>
+              </Fragment>
+            );
+          })}
+          {working && messages.at(-1)?.from !== null && <WorkingRow label={working} />}
+        </Thread>
+        <Composer
+          onSend={(text, replyTo) => void postToGroup({ data: { groupId, text, replyTo } }).catch(fail("send to the group"))}
+          ready={!!state}
+          placeholder={state ? `Message ${state.title}` : "Connecting…"}
+        />
+      </div>
+    </QuoteProvider>
   );
 }
 
@@ -110,6 +127,7 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
 export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (id: string) => void }) {
   const [members, setMembers] = useState<string[]>([]);
   const [title, setTitle] = useState("");
+  const [purpose, setPurpose] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<{ members?: string; form?: string }>({});
   const picker = useRef<HTMLFieldSetElement>(null);
@@ -130,7 +148,7 @@ export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (
             if (members.length < 2) return setProblem({ members: "Pick at least two bots." }), picker.current!.querySelector("button")!.focus();
             setBusy(true);
             setProblem({});
-            createGroup({ data: { title: title.trim(), botIds: members } }).then(({ id }) => onCreated(id), (e: Error) => (setProblem({ form: `Couldn't start the group: ${e.message}` }), setBusy(false)));
+            createGroup({ data: { title: title.trim(), botIds: members, purpose: purpose.trim() } }).then(({ id }) => onCreated(id), (e: Error) => (setProblem({ form: `Couldn't start the group: ${e.message}` }), setBusy(false)));
           }}
         >
           <FieldGroup>
@@ -153,6 +171,19 @@ export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (
               <Input id="group-title" value={title} onChange={(e) => setTitle(e.target.value)} aria-describedby="group-title-hint" placeholder={picked.length ? picked.map((b) => b.name).join(", ") : "Launch research"} maxLength={60} />
               <FieldDescription id="group-title-hint">Leave it empty to name the group after its bots.</FieldDescription>
             </Field>
+            <Field>
+              <FieldLabel htmlFor="group-purpose">What it's for</FieldLabel>
+              <Textarea
+                id="group-purpose"
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
+                aria-describedby="group-purpose-hint"
+                placeholder={`Plan the product launch. ${picked[0]?.name ?? "Scout"} digs up what competitors shipped, ${picked[1]?.name ?? "Scribe"} drafts the announcement.`}
+                rows={3}
+                className="max-h-48"
+              />
+              <FieldDescription id="group-purpose-hint">Every bot here reads this: the goal, and who owns what.</FieldDescription>
+            </Field>
             <FieldError>{problem.form}</FieldError>
             <Button type="submit" disabled={busy} className="self-start">
               {busy ? "Starting…" : "Start group"}
@@ -164,17 +195,70 @@ export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (
   );
 }
 
-/** A group's details, inline beside it: who's in it, and disbanding it when the work is done. */
-export function GroupPanel({ group, bots, onDisbanded }: { group: GroupSummary; bots: BotSummary[]; onDisbanded: () => void }) {
+/** What a group is for, edited in place and saved when it loses focus (as a bot's instructions are). */
+function PurposeField({ groupId, purpose }: { groupId: string; purpose: string }) {
+  const field = useField(purpose, (v) => updateGroup({ data: { groupId, purpose: v } }));
+  return (
+    <Field data-invalid={field.error ? true : undefined}>
+      <div className="flex items-baseline justify-between gap-2">
+        <FieldLabel htmlFor="group-panel-purpose" className={CAPTION}>
+          What it's for
+        </FieldLabel>
+        <Saved at={field.savedAt} />
+      </div>
+      <Textarea
+        id="group-panel-purpose"
+        {...field.control}
+        aria-describedby={field.error ? "group-panel-purpose-error" : undefined}
+        placeholder="The goal, and who owns what. Every bot here reads it."
+        rows={4}
+        className="bg-surface max-h-72 md:text-sm"
+      />
+      <FieldError id="group-panel-purpose-error">{field.error}</FieldError>
+    </Field>
+  );
+}
+
+/** A group's details, inline beside it: its name and what it's for (both edited in place), who's in it, and disbanding
+ * it when the work is done. */
+export function GroupPanel({ userId, group, bots, onDisbanded }: { userId: string; group: GroupSummary; bots: BotSummary[]; onDisbanded: () => void }) {
   const [confirming, setConfirming] = useState(false);
+  const state = useRoom(userId, group.id);
+  const title = useField(group.title, (v) => updateGroup({ data: { groupId: group.id, title: v } }), "Give it a name.");
   const members = group.members.flatMap((id) => bots.filter((b) => b.id === id));
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-4">
-      <div className="flex flex-col items-center gap-2 text-center">
+      <div className="relative flex flex-col items-center gap-2 text-center">
         <GroupAvatar members={members} size="lg" />
-        <span className="max-w-full truncate text-lg font-semibold">{group.title}</span>
+        <Saved at={title.savedAt} className="absolute top-0 right-0 flex h-14 items-center" />
+        <Field data-invalid={title.error ? true : undefined} className="gap-1">
+          <FieldLabel htmlFor="group-panel-title" className="sr-only">
+            Name
+          </FieldLabel>
+          <Input
+            id="group-panel-title"
+            {...title.control}
+            onKeyDown={(e) => (e.key === "Enter" ? e.currentTarget.blur() : title.control.onKeyDown(e))}
+            aria-describedby={title.error ? "group-panel-title-error" : undefined}
+            maxLength={60}
+            autoComplete="off"
+            className="hover:border-input focus-visible:bg-surface border-transparent text-center text-lg font-semibold md:text-lg"
+          />
+          <FieldError id="group-panel-title-error" className="text-center">
+            {title.error}
+          </FieldError>
+        </Field>
         <span className="text-muted-foreground text-sm">{members.length === 1 ? "1 bot" : `${members.length} bots`}</span>
       </div>
+      {state ? (
+        <PurposeField groupId={group.id} purpose={state.purpose} />
+      ) : (
+        <div role="status" className="flex flex-col gap-3">
+          <span className="sr-only">Loading what it's for…</span>
+          <Skeleton aria-hidden className="h-3 w-16" />
+          <Skeleton aria-hidden className="h-24 rounded-lg" />
+        </div>
+      )}
       <section aria-labelledby="group-members-title" className="flex flex-col gap-2">
         <h3 id="group-members-title" className="text-muted-foreground text-xs font-medium">
           Members

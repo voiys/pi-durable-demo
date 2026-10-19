@@ -159,12 +159,12 @@ export class User extends Agent<Env, UserState> {
 
   // --- groups ---
 
-  /** A room for some of the user's bots; it lives until the user disbands it. */
-  async createGroup(title: string, botIds: string[]) {
+  /** A room for some of the user's bots, with what it is for; it lives until the user disbands it. */
+  async createGroup(title: string, botIds: string[], purpose: string) {
     const members = [...new Set(botIds)].map((id) => this.bot(id));
     const id = crypto.randomUUID();
     const name = title.trim() || members.map((m) => m.name).join(", ");
-    await this.env.Group.getByName(botObjectName(this.name, id)).init(name, members.map(({ id, name }) => ({ id, name })));
+    await this.env.Group.getByName(botObjectName(this.name, id)).init(name, purpose.trim(), members.map(({ id, name }) => ({ id, name })));
     this.sql`INSERT INTO groups (id, title, members) VALUES (${id}, ${name}, ${JSON.stringify(members.map((m) => m.id))})`;
     this.#publish();
     return id;
@@ -172,6 +172,16 @@ export class User extends Agent<Env, UserState> {
 
   hasGroup(groupId: string) {
     return this.sql`SELECT 1 FROM groups WHERE id = ${groupId}`.length === 1;
+  }
+
+  /** Renames the room or changes its purpose; the catalog keeps the title in sync. */
+  async updateGroup(groupId: string, patch: { title?: string; purpose?: string }) {
+    if (!this.hasGroup(groupId)) throw new Error(`Unknown group ${groupId}`);
+    const title = patch.title?.trim();
+    if (title === "") throw new Error("A group needs a title");
+    await this.env.Group.getByName(botObjectName(this.name, groupId)).update({ ...(title !== undefined && { title }), ...(patch.purpose !== undefined && { purpose: patch.purpose.trim() }) });
+    if (title !== undefined) this.sql`UPDATE groups SET title = ${title} WHERE id = ${groupId}`;
+    this.#publish();
   }
 
   /** Deletes the room and its transcript. Each member keeps what it remembers of it (its own memory). */

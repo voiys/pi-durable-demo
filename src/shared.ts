@@ -10,10 +10,12 @@ export const MATCH_OPEN = "\u0002";
 export const MATCH_CLOSE = "\u0003";
 /** A group chat in the user's catalog: the room's title and member bot ids. */
 export type GroupSummary = { id: string; title: string; members: string[] };
-/** One message in a group: `from` is a member bot's id, or null for the user. */
-export type GroupMessage = { id: string; from: string | null; text: string; ts: number };
-/** A group's synced state (Group DO): `typing` are the bots working on what they just heard. */
-export type GroupState = { title: string; members: { id: string; name: string }[]; messages: GroupMessage[]; typing: string[] };
+/** One message in a group: `from` is a member bot's id, or null for the user. `replyTo`: the id of the room message a
+ * user message replies to. Its text is the bare reply: the Group DO quotes the replied-to message for the bots itself. */
+export type GroupMessage = { id: string; from: string | null; text: string; ts: number; replyTo?: string };
+/** A group's synced state (Group DO): `purpose` is what the group is for and who owns what (every member's instructions
+ * include it); `typing` are the bots working on what they just heard. */
+export type GroupState = { title: string; purpose: string; members: { id: string; name: string }[]; messages: GroupMessage[]; typing: string[] };
 /** `mainBot`: the orchestrator bot, the only one that can create, rename and delete bots (`fleet` tool). */
 export type UserState = { bots: BotSummary[]; groups: GroupSummary[]; mainBot: string | null; chatgpt: { email: string } | null };
 export type IndexRow = { entryId: string; role: "user" | "assistant"; text: string };
@@ -43,3 +45,22 @@ export type ModelOption = { id: string; name: string; levels: ModelThinkingLevel
  * Memory logs them as "work" and the UI renders them as agent messages. */
 export const AGENT_PREFIXES = ["[subagent ", "[message from ", "[routine "] as const;
 export const isAgentMessage = (text: string) => AGENT_PREFIXES.some((p) => text.startsWith(p));
+
+/** A reply to one message, as plain text (bot DMs): the quoted message as markdown blockquote lines, a blank line, the
+ * reply. The model reads it as is; the UI splits it back with parseReply. */
+export const replyText = (quoted: string, reply: string) => `${quoted.split("\n").map((l) => `> ${l}`).join("\n")}\n\n${reply}`;
+export function parseReply(text: string): { quoted: string; reply: string } | null {
+  const m = /^((?:>[^\n]*\n)+)\n([\s\S]*)$/.exec(text);
+  return m && { quoted: m[1].trimEnd().split("\n").map((l) => l.replace(/^> ?/, "")).join("\n"), reply: m[2] };
+}
+
+/** The user's pick on a bot's `ask` card (src/server/bot.ts), sent as their next message: the user's own words, so it
+ * logs as "user" (no AGENT_PREFIXES match). Several picks (`multiple`) are joined with ", ". */
+export const answerText = (question: string, picks: string[]) => {
+  if (!picks.length) throw new Error("An answer needs at least one pick");
+  return `[answer to “${question}”] ${picks.join(", ")}`;
+};
+export function parseAnswer(text: string): { question: string; answer: string } | null {
+  const m = /^\[answer to “([\s\S]*?)”\] ([\s\S]*)$/.exec(text);
+  return m && { question: m[1], answer: m[2] };
+}

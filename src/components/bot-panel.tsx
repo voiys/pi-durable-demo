@@ -21,7 +21,7 @@ import { VIEW_BUDGETS, type BotDetails, type BotSummary } from "@/shared";
 const kb = (n: number) => `${Math.round(n / 1000)}K`;
 const day = (ts: number) => new Date(ts).toLocaleDateString([], { month: "short", day: "numeric" });
 /** A panel section's title: a caption in sentence case; sections are set apart by space alone (DESIGN.md §6). */
-const CAPTION = "text-muted-foreground text-xs font-medium";
+export const CAPTION = "text-muted-foreground text-xs font-medium";
 /** Shows a row's action on hover or focus, always on touch screens (no hover there). */
 const ON_HOVER = "opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100";
 
@@ -46,7 +46,7 @@ function Detail({ children }: { children: ReactNode }) {
 
 /** "Saved" for 1.5s after a field saves, then faded: the acknowledgment in place of a toast (FADE: opacity, in 200ms,
  * out 150ms). The region stays mounted so each save is announced; the field's own value is the lasting cue. */
-function Saved({ at, className }: { at: number; className?: string }) {
+export function Saved({ at, className }: { at: number; className?: string }) {
   const [shown, setShown] = useState(false);
   useEffect(() => {
     if (!at) return;
@@ -70,7 +70,7 @@ function Saved({ at, className }: { at: number; className?: string }) {
 /** An edited field, saved when it loses focus (or on Enter for one-line fields). A refused value stays in the field,
  * marked invalid with the reason under it, until it's fixed or Escape puts the saved value back. `savedAt` is when it
  * last saved, for <Saved>. */
-function useField(saved: string, save: (value: string) => Promise<unknown>, required?: string) {
+export function useField(saved: string, save: (value: string) => Promise<unknown>, required?: string) {
   const [value, setValue] = useState(saved);
   const [error, setError] = useState<string>();
   const [savedAt, setSavedAt] = useState(0);

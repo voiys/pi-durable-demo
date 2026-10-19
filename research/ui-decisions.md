@@ -19,3 +19,14 @@
   succeeded, never tool names, arguments, SQL or JSON on the surface.
 - Work in a race phase then a polish phase. Everything must fit together and look professional and complete.
 
+## 2026-10-19 (user, replies + questions)
+
+- Typing then sent replaces streamed replies (supersedes "Streamdown animated streaming with caret" above): a typing
+  bubble while a text block is written, then the whole bubble; each text block is its own message.
+- A bot's question (`ask`) is an async card in the thread; clicking an option sends it as your next message and never
+  blocks the bot.
+- Replies: "Reply" on any message, or "Quote" on text selected inside one bubble, puts a chip over the composer. In a
+  bot chat the quote travels as "> <sender> said:" lines before your words; in a group, Reply targets that message
+  (`replyTo`) and a reply to a bot's message reaches that bot.
+- Groups have a description ("What it's for"): set when starting the group, edited in place in its panel, read by every
+  member bot as part of its instructions.

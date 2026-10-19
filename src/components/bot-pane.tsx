@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUp, ChevronLeft, Square } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
 import { Activity, savedReports, Working, type ToolContext, type ToolResult } from "@/components/ai/activity";
 import { agentSender, isEvent, parseAgentMessage, SystemEvent, type AgentMsg, type Sender } from "@/components/ai/agents-message";
 import { Markdown } from "@/components/ai/markdown";
@@ -31,8 +31,9 @@ import { usePiSession } from "@/pi/use-pi-session";
 import { toTurns, type PiTurn } from "@/pi/view";
 import { CrossFade, FADE, ICON, RISE, SETTLE, SettleEmpty, SLIDE_UP, useCalm } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { compose, parseQuotes, QuoteBlock, QuoteChips, QuoteProvider, Replyable, useQuotes, type Quote } from "@/components/quotes";
 import { setBotModel } from "@/server/fns";
-import { botObjectName, type BotSummary } from "@/shared";
+import { answerText, botObjectName, parseAnswer, type BotSummary } from "@/shared";
 
 // ---- Shared thread pieces (the group thread is built from the same ones, src/components/group-pane.tsx) ----
 
@@ -131,11 +132,55 @@ export function ThreadRow({ mine = false, sender, first, last, highlight = false
 }
 
 /** A bubble (DESIGN.md §6): yours blue, theirs gray, an error red with words. The last of a run tucks its outer bottom
- * corner in, as iMessage's tail does. */
-export function Said({ mine = false, tail, error = false, children }: { mine?: boolean; tail: boolean; error?: boolean; children: ReactNode }) {
-  return (
+ * corner in, as iMessage's tail does. A `reply` bubble offers "Reply" beside it, and its text can be quoted. */
+export function Said({ mine = false, tail, error = false, reply, children }: { mine?: boolean; tail: boolean; error?: boolean; reply?: Quote; children: ReactNode }) {
+  const bubble = (
     <Bubble align={mine ? "end" : "start"} variant={error ? "destructive" : mine ? "default" : "muted"} role={error ? "alert" : undefined}>
       <BubbleContent className={cn(mine && "whitespace-pre-wrap", tail && (mine ? "rounded-br-sm" : "rounded-bl-sm"))}>{children}</BubbleContent>
+    </Bubble>
+  );
+  return reply ? (
+    <Replyable quote={reply} mine={mine}>
+      {bubble}
+    </Replyable>
+  ) : (
+    bubble
+  );
+}
+
+/** Your message as its bubble: any quotes it opens with as excerpts on top (`replied`: the group message it replies
+ * to), then your words; an answer to a bot's question as the option you picked, captioned. `id` is its group message id. */
+export function YourSaid({ text, tail, replied, id }: { text: string; tail: boolean; replied?: { sender: string; text: string }; id?: string }) {
+  const answer = parseAnswer(text);
+  if (answer)
+    return (
+      <Said mine tail={tail} reply={{ sender: "You", text: answer.answer, replyTo: id }}>
+        {answer.answer}
+        <span className="block pt-0.5 text-xs font-medium">Answered</span>
+      </Said>
+    );
+  const { quotes, body } = parseQuotes(text);
+  return (
+    <Said mine tail={tail} reply={{ sender: "You", text: body, replyTo: id }}>
+      {[...(replied ? [replied] : []), ...quotes].map((q, i) => (
+        <QuoteBlock key={i} {...q} />
+      ))}
+      {body}
+    </Said>
+  );
+}
+
+/** The bot writing its next message: three dots in a gray bubble, breathing in turn (still under reduced motion). The
+ * words replace it whole once the block is written. */
+function Typing({ tail }: { tail: boolean }) {
+  return (
+    <Bubble variant="muted" role="status">
+      <BubbleContent className={cn("flex h-lh box-content items-center gap-1", tail && "rounded-bl-sm")}>
+        <span className="sr-only">Typing…</span>
+        {["", "[animation-delay:150ms]", "[animation-delay:300ms]"].map((delay) => (
+          <span key={delay} aria-hidden className={cn("bg-muted-foreground size-2 rounded-full opacity-60 motion-safe:animate-typing", delay)} />
+        ))}
+      </BubbleContent>
     </Bubble>
   );
 }
@@ -229,15 +274,18 @@ export function Thread({ busy = false, children }: { busy?: boolean; children: R
  * blue send circle on the right that wakes up with text, a stop square while the bot works and nothing is typed. Send
  * and stop are one button, so its fill changes color (150ms) and its icon cross-fades (better-ui icon-transitions).
  * `onStop` is set while there is work to stop. Enter sends (queued behind running work), Shift+Enter is a new line. */
-export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend: (text: string) => void; ready: boolean; onStop?: () => void; placeholder: string; tools?: ReactNode }) {
+export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend: (text: string, replyTo?: string) => void; ready: boolean; onStop?: () => void; placeholder: string; tools?: ReactNode }) {
   const [draft, setDraft] = useState("");
+  const { quotes, clear, input } = useQuotes();
   const typed = draft.trim() !== "";
   const stop = onStop !== undefined && !typed;
   const icon = useCalm(ICON);
   const send = () => {
     if (!typed || !ready) return;
-    onSend(draft);
+    const { text, replyTo } = compose(quotes, draft);
+    onSend(text, replyTo);
     setDraft("");
+    clear();
   };
   return (
     <form
@@ -247,6 +295,7 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
         send();
       }}
     >
+      <QuoteChips />
       {/* 22px is the pill at the 44px one-line height; it stays that radius as the draft grows. */}
       <InputGroup className="bg-background shadow-composer min-h-11 items-end rounded-[22px] border-transparent">
         {tools && (
@@ -255,6 +304,7 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
           </InputGroupAddon>
         )}
         <InputGroupTextarea
+          ref={input}
           value={draft}
           autoFocus
           rows={1}
@@ -293,16 +343,72 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
 
 // ---- The bot thread ----
 
-/** Consecutive thinking/tool-call parts form one activity run; text parts are bubbles. */
-function groupParts(parts: readonly PiMessagePart[]) {
-  const groups: ({ text: string } | { run: PiMessagePart[] })[] = [];
+type AskCall = Extract<PiMessagePart, { type: "tool-call" }>;
+
+/** Consecutive thinking/tool-call parts form one activity run; each text part is a bubble (`writing` is the one the bot
+ * is still writing, shown as typing even before its first word); an `ask` call is a question card. */
+function groupParts(parts: readonly PiMessagePart[], writing: PiMessagePart | undefined) {
+  const groups: ({ text: string; part: PiMessagePart } | { ask: AskCall } | { run: PiMessagePart[] })[] = [];
   for (const part of parts) {
     const last = groups.at(-1);
-    if (part.type === "text") part.text.trim() && groups.push({ text: part.text });
+    if (part.type === "text") (part.text.trim() || part === writing) && groups.push({ text: part.text, part });
+    else if (part.type === "tool-call" && part.name === "ask") groups.push({ ask: part });
     else if (last && "run" in last) last.run.push(part);
     else groups.push({ run: [part] });
   }
   return groups;
+}
+
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/** A bot's question (its `ask` tool), posted without stopping its work: the question, then lettered options. Picking
+ * one sends it as your next message; a `multiple` question collects picks and sends them together. Once answered (or
+ * picked here, while the answer waits its turn) the picks stay selected, the rest dim, and nothing is clickable. */
+function QuestionCard({ call, answer, onAnswer }: { call: AskCall; answer?: string; onAnswer: (text: string) => void }) {
+  const [picks, setPicks] = useState<string[]>([]);
+  const [sent, setSent] = useState(false);
+  const titleId = useId();
+  const { question, options, multiple = false } = call.arguments as { question: string; options: string[]; multiple?: boolean };
+  if (!Array.isArray(options) || !options.length) throw new Error(`ask call ${call.id} has no options`);
+  const chosen = answer === undefined ? (sent ? picks : undefined) : options.filter((o) => `, ${answer}, `.includes(`, ${o}, `));
+  const send = (list: string[]) => (setPicks(list), setSent(true), onAnswer(answerText(question, list)));
+  return (
+    <section aria-labelledby={titleId} className="bg-surface flex w-full max-w-[min(85%,520px)] flex-col rounded-lg border p-1.5 sm:max-w-[min(75%,520px)]">
+      <p id={titleId} className="px-2.5 pt-1.5 pb-2 text-base font-medium text-balance">
+        {question}
+      </p>
+      <ul className="flex flex-col">
+        {options.map((o, i) => {
+          const on = (chosen ?? picks).includes(o);
+          return (
+            <li key={o}>
+              <button
+                type="button"
+                aria-pressed={on}
+                disabled={chosen !== undefined}
+                onClick={() => (multiple ? setPicks((p) => (on ? p.filter((x) => x !== o) : [...p, o])) : send([o]))}
+                className={cn(
+                  "hover:bg-accent flex min-h-8 w-full items-baseline gap-3 rounded-md px-2.5 py-1.5 text-left text-sm transition-[background-color,opacity] duration-150 focus-visible:-outline-offset-2 focus-visible:outline-2 disabled:hover:bg-transparent",
+                  on && "bg-muted disabled:hover:bg-muted font-medium",
+                  chosen && !on && "opacity-50",
+                )}
+              >
+                <span aria-hidden className={cn("w-3 shrink-0 text-xs font-medium tabular-nums", on ? "text-foreground" : "text-muted-foreground")}>
+                  {LETTERS[i]}
+                </span>
+                {o}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {multiple && chosen === undefined && (
+        <Button size="sm" className="mx-1 mt-1.5 mb-0.5 self-end" disabled={!picks.length} onClick={() => send(picks)}>
+          Send
+        </Button>
+      )}
+    </section>
+  );
 }
 
 /** A report the bot saved: a card (title, then what it is; no icon tile, DESIGN.md §2.0) that opens it in the details panel. */
@@ -320,31 +426,49 @@ function ReportCard({ id, title }: { id: number; title: string }) {
   );
 }
 
-/** The bot's turn: what it set out to do and how it went (activity), its words, saved reports, and how the turn ended. */
-function BotTurn({ turn, ctx }: { turn: PiTurn; ctx: ToolContext }) {
-  const groups = groupParts(turn.parts);
+/** The bot's turn: what it set out to do and how it went (activity), its words, its questions, saved reports, and how
+ * the turn ended. Each text block is its own message: typing while it is written, then the whole bubble fades in.
+ * `between`: the run goes on with nothing live (see BotPane). `answerOf` is the answer you gave to a question after this turn. */
+function BotTurn({ turn, ctx, name, writing, between, answerOf, onAnswer }: { turn: PiTurn; ctx: ToolContext; name: string; writing?: PiMessagePart; between: boolean; answerOf: (question: string) => string | undefined; onAnswer: (text: string) => void }) {
+  const groups = groupParts(turn.parts, writing);
   const rise = useCalm(RISE);
   return (
     <>
-      {groups.map((g, i) =>
-        "text" in g ? (
-          <Said key={i} tail={!groups[i + 1] || !("text" in groups[i + 1])}>
-            <Markdown streaming={turn.live && i === groups.length - 1}>{g.text}</Markdown>
-          </Said>
-        ) : (
-          <div key={i} className="flex flex-col gap-2 py-1 empty:hidden">
-            <Activity parts={g.run} ctx={ctx} live={turn.live && i === groups.length - 1} />
-            {/* A card saved while you watch rises in after its line; history's cards are just there. */}
-            <AnimatePresence initial={false}>
-              {savedReports(g.run, ctx).map((r) => (
-                <motion.div key={r.id} variants={rise} initial="initial" animate="animate">
-                  <ReportCard {...r} />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        ),
-      )}
+      {/* What appears while you watch fades in (FADE); what the turn first rendered with doesn't. Nothing has an exit: a
+          typing bubble gives its place to the words at once. */}
+      <AnimatePresence initial={false}>
+        {groups.map((g, i) =>
+          "text" in g ? (
+            g.part === writing ? (
+              <motion.div key={`typing:${i}`} className="flex flex-col" variants={FADE} initial="initial" animate="animate">
+                <Typing tail={!groups[i + 1]} />
+              </motion.div>
+            ) : (
+              <motion.div key={`text:${i}`} className="flex flex-col" variants={FADE} initial="initial" animate="animate">
+                <Said tail={!groups[i + 1] || !("text" in groups[i + 1])} reply={{ sender: name, text: g.text }}>
+                  <Markdown>{g.text}</Markdown>
+                </Said>
+              </motion.div>
+            )
+          ) : "ask" in g ? (
+            <motion.div key={`ask:${i}`} className="py-1" variants={FADE} initial="initial" animate="animate">
+              <QuestionCard call={g.ask} answer={answerOf((g.ask.arguments as { question: string }).question)} onAnswer={onAnswer} />
+            </motion.div>
+          ) : (
+            <div key={`run:${i}`} className="flex flex-col gap-2 py-1 empty:hidden">
+              <Activity parts={g.run} ctx={ctx} live={(turn.live || between) && i === groups.length - 1} />
+              {/* A card saved while you watch rises in after its line; history's cards are just there. */}
+              <AnimatePresence initial={false}>
+                {savedReports(g.run, ctx).map((r) => (
+                  <motion.div key={r.id} variants={rise} initial="initial" animate="animate">
+                    <ReportCard {...r} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          ),
+        )}
+      </AnimatePresence>
       {turn.stopReason === "aborted" ? (
         <Status>Stopped</Status>
       ) : (
@@ -421,81 +545,97 @@ export function BotPane({ userId, bot, session: sessionId, entry, bots }: { user
   const anchorAt = views.findLastIndex((v) => v.key === "you");
   // The bot is at work with nothing of its reply on screen yet: said under your message, or on its own line after
   // someone else's (a routine, a helper reporting back).
-  const working = session.running && views.at(-1)?.turn.role !== "assistant";
+  // Between a run's steps (its tools done, its next reply not begun) nothing is live: the run's line says "Thinking…"
+  // again, or after a question card the working line does.
+  const end = turns.at(-1)?.parts.at(-1);
+  const between = session.running && end?.type === "tool-call" && !turns.at(-1)!.live;
+  const working = session.running && (views.at(-1)?.turn.role !== "assistant" || (between && end.name === "ask"));
   const workingLabel = session.retry ? "Retrying…" : "Working…";
   const name = sessionId ? (bot.agents.find((a) => a.session === sessionId)?.name ?? "Helper") : bot.name;
   // Keyed by role and position: the streamed reply keeps its row when pi commits it under its entry id.
   const seen = { user: 0, assistant: 0 };
+  // Your answers to the bots' questions, by where they sit in the thread: a question card is answered by a later one.
+  const answers = views.map((v) => (v.key === "you" ? parseAnswer(v.text) : null));
+  const answerAfter = (i: number) => (question: string) => answers.slice(i + 1).find((a) => a?.question === question)?.answer;
+  // An answer steers the run still going (pi places steers at its next boundary, not after the run: pi
+  // packages/durable/src/harness/inbox.ts), so the bot hears it while it works.
+  const answer = (text: string) => session.submit(text, "steer");
+  // The text block the bot is writing now, shown as typing until it's done.
+  const writing = session.live?.parts.at(-1)?.type === "text" ? session.live.parts.at(-1) : undefined;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <Thread busy={session.running}>
-        {turns.length === 0 && session.status !== "open" && <ThreadSkeleton />}
-        {turns.length === 0 && session.status === "open" && !session.running && (
-          <ThreadEmpty
-            face={<Face sender={sessionId ? { name } : bot} className="size-14 text-2xl" />}
-            title={name}
-            description={sessionId ? `A helper ${bot.name} brought in. What it works on shows up here.` : bot.instructions || "Hand it something to research. It keeps one conversation and remembers all of it."}
-            suggestions={sessionId ? [] : SUGGESTIONS}
-            onPick={session.submit}
-          />
-        )}
-        {views.map((v, i) => {
-          const id = `${v.turn.role}:${seen[v.turn.role]++}`;
-          const next = views[i + 1];
-          const first = divides[i] || views[i - 1].key !== v.key;
-          const last = !next || divides[i + 1] || next.key !== v.key;
-          const mine = v.key === "you";
-          const highlight = hit === v.turn && entry !== cleared;
-          const enter = v.turn.timestamp >= openedAt;
-          return (
-            <Fragment key={id}>
-              {divides[i] && <TimeDivider id={`time:${id}`} ts={v.turn.timestamp} enter={enter} />}
-              <ThreadItem id={v.turn.ids[0]} first={first} enter={enter} mine={mine} anchor={i === anchorAt}>
-                {v.agent && isEvent(v.agent) ? (
-                  <SystemEvent msg={v.agent} />
-                ) : (
-                  <ThreadRow mine={mine} sender={v.sender} first={first} last={last} highlight={highlight}>
-                    {v.turn.role === "assistant" ? (
-                      <BotTurn turn={v.turn} ctx={ctx} />
-                    ) : (
-                      <Said mine={mine} tail={last}>
-                        {v.agent ? <Markdown>{v.agent.body}</Markdown> : v.text}
-                      </Said>
-                    )}
-                    {mine && !next && <Status working={working}>{working ? workingLabel : "Delivered"}</Status>}
-                  </ThreadRow>
-                )}
-              </ThreadItem>
-            </Fragment>
-          );
-        })}
-        {working && views.at(-1)?.key !== "you" && <WorkingRow label={workingLabel} />}
-        {session.error && (
-          <MessageScrollerItem messageId="error" className="pt-3">
-            <ThreadRow first last>
-              <Said tail error>
-                {session.error}
-              </Said>
-            </ThreadRow>
-          </MessageScrollerItem>
-        )}
-        <ScrollToMessage id={hit?.ids[0]} />
-      </Thread>
-      <Composer
-        onSend={session.submit}
-        ready={session.status === "open"}
-        onStop={session.running ? session.abort : undefined}
-        placeholder={{ open: `Message ${name}`, connecting: "Connecting…", closed: "Offline, reconnecting…" }[session.status]}
-        tools={
-          !sessionId && (
-            <ModelPicker
-              model={session.model?.modelId ?? null}
-              thinkingLevel={session.thinkingLevel}
-              onChange={(model, thinkingLevel) => setBotModel({ data: { botId: bot.id, model, thinkingLevel } })}
+    <QuoteProvider>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Thread busy={session.running}>
+          {turns.length === 0 && session.status !== "open" && <ThreadSkeleton />}
+          {turns.length === 0 && session.status === "open" && !session.running && (
+            <ThreadEmpty
+              face={<Face sender={sessionId ? { name } : bot} className="size-14 text-2xl" />}
+              title={name}
+              description={sessionId ? `A helper ${bot.name} brought in. What it works on shows up here.` : bot.instructions || "Hand it something to research. It keeps one conversation and remembers all of it."}
+              suggestions={sessionId ? [] : SUGGESTIONS}
+              onPick={session.submit}
             />
-          )
-        }
-      />
-    </div>
+          )}
+          {views.map((v, i) => {
+            const id = `${v.turn.role}:${seen[v.turn.role]++}`;
+            const next = views[i + 1];
+            const first = divides[i] || views[i - 1].key !== v.key;
+            const last = !next || divides[i + 1] || next.key !== v.key;
+            const mine = v.key === "you";
+            const highlight = hit === v.turn && entry !== cleared;
+            const enter = v.turn.timestamp >= openedAt;
+            return (
+              <Fragment key={id}>
+                {divides[i] && <TimeDivider id={`time:${id}`} ts={v.turn.timestamp} enter={enter} />}
+                <ThreadItem id={v.turn.ids[0]} first={first} enter={enter} mine={mine} anchor={i === anchorAt}>
+                  {v.agent && isEvent(v.agent) ? (
+                    <SystemEvent msg={v.agent} />
+                  ) : (
+                    <ThreadRow mine={mine} sender={v.sender} first={first} last={last} highlight={highlight}>
+                      {v.turn.role === "assistant" ? (
+                        <BotTurn turn={v.turn} ctx={ctx} name={name} writing={v.turn.live ? writing : undefined} between={between && !next} answerOf={answerAfter(i)} onAnswer={answer} />
+                      ) : v.agent ? (
+                        <Said tail={last} reply={{ sender: v.sender!.name, text: v.agent.body }}>
+                          <Markdown>{v.agent.body}</Markdown>
+                        </Said>
+                      ) : (
+                        <YourSaid text={v.text} tail={last} />
+                      )}
+                      {mine && !next && <Status working={working}>{working ? workingLabel : "Delivered"}</Status>}
+                    </ThreadRow>
+                  )}
+                </ThreadItem>
+              </Fragment>
+            );
+          })}
+          {working && views.at(-1)?.key !== "you" && <WorkingRow label={workingLabel} />}
+          {session.error && (
+            <MessageScrollerItem messageId="error" className="pt-3">
+              <ThreadRow first last>
+                <Said tail error>
+                  {session.error}
+                </Said>
+              </ThreadRow>
+            </MessageScrollerItem>
+          )}
+          <ScrollToMessage id={hit?.ids[0]} />
+        </Thread>
+        <Composer
+          onSend={(text) => session.submit(text)}
+          ready={session.status === "open"}
+          onStop={session.running ? session.abort : undefined}
+          placeholder={{ open: `Message ${name}`, connecting: "Connecting…", closed: "Offline, reconnecting…" }[session.status]}
+          tools={
+            !sessionId && (
+              <ModelPicker
+                model={session.model?.modelId ?? null}
+                thinkingLevel={session.thinkingLevel}
+                onChange={(model, thinkingLevel) => setBotModel({ data: { botId: bot.id, model, thinkingLevel } })}
+              />
+            )
+          }
+        />
+      </div>
+    </QuoteProvider>
   );
 }

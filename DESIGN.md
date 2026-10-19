@@ -141,6 +141,20 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   never a spinner.
 - **Artifacts:** reports, tables and links render as cards (12px radius, surface fill, hairline) inline after the
   activity line: title 13px/510, description caption, no icon tile (§2.0). Click opens in the side panel.
+- **Typing, then sent (user's call, 2026-10-19):** replies never stream into a bubble. While the bot writes a text block
+  a typing bubble shows (`role="status"`, "Typing…" for screen readers); once the block is done (a later block starts
+  or the message is saved) the whole bubble appears. Each text block is its own bubble, so a turn reads as several
+  messages; the bot is told to say one short line before longer work. Between a run's steps the activity line says
+  "Thinking…" again, so the thread never looks idle while the bot works.
+- **Replies and quotes:** "Reply" (caption, muted) beside a bubble on hover, keyboard focus or long press; "Quote" floats
+  over text selected in a bubble. Each puts a chip over the composer (sender, one line, ×). Your bubble shows its quotes
+  as excerpts on top: a 2px rule in the bubble's ink, sender caption, two lines. One quote format everywhere:
+  "> <sender> said:" lines, then a blank line, then your words. In groups, Reply sends the message id and the room
+  quotes it for the bots; replying to a bot's message reaches that bot.
+- **Question cards** (a bot's `ask`): a surface card (12px radius, hairline), the question 15/510, options as rows with
+  muted letters A, B, C (no icons); each option is a button named by its text, `aria-pressed` for the pick. Picking
+  sends your answer as a steer, so the bot hears it at its next step and never waits on it. Answered: the pick stays
+  selected (muted fill, ink letter), the rest at 50%, nothing clickable; your bubble shows the pick, captioned "Answered".
 - **Links in bubbles** are underlined in the bubble's own ink, as in Messages: blue on the gray bubble is 3.9:1.
 - **Agent messages** (another bot, a helper, a routine): group-chat style (avatar + name), or a centered caption
   ("Routine ai-news ran", "scout brought in digger") for system events.
@@ -173,7 +187,8 @@ State swaps use `initial={false}`, and history, panel lists and the rail on load
 |---|---|
 | Your message arrives | opacity 0→1, y 12→0, blur 4→0, 300ms ease-out (`SLIDE_UP`) |
 | Reply, other senders, system caption, time divider, working row | opacity 200ms in, 150ms out (`FADE`) |
-| Streamed reply | Streamdown word fade, opacity 200ms ease-out, staggered, ≤320ms behind the stream; caret while streaming |
+| Reply being written | typing bubble (three dots, gray bubble, each dot breathing opacity .35→1, 1.2s, 150ms apart; still under reduced motion); the finished block replaces it whole with `FADE` |
+| Quote chip, "Quote" over a selection | chip fades in 150ms; the button as a popover (opacity + zoom 0.96→1 + 4px, 150ms) |
 | "Delivered" ↔ "Working…", who is working | words cross-fade in one grid cell (`CrossFade`, `FADE`), so the line never moves |
 | Activity line settles | running line fades out 150ms (popped out of flow) while its outcome fades in 200ms in place |
 | Lines fold into a summary | lines leave at once; summary opacity + blur 4→0, 200ms (`BLUR_IN`) |

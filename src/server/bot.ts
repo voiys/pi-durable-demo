@@ -94,6 +94,7 @@ export class Bot extends DurableObject<Env> {
       this.registry.install(webExtension(this.env.SEARXNG_URL));
       this.registry.install(this.#dataTools);
       this.registry.install(this.#fleet); // offered only to the main bot's conversation (setMain)
+      this.registry.install(this.#ask); // the main conversation only: not subagents, not group conversations
       this.registry.install(this.#optchat);
       const models = planModels(() => this.#user().credential(), (c) => this.#user().refreshCredential(c));
       return Harness.open(storage, { models, registry: this.registry }, context);
@@ -108,7 +109,7 @@ export class Bot extends DurableObject<Env> {
     bots: async () => (await this.#user().listBots()).map((b) => ({ id: b.id, name: b.name })),
     sendToBot: (botId, message) => this.env.Bot.getByName(`${this.userId}--${botId}`).receive(this.#profile().name, message),
     lastOfBot: (botId) => this.env.Bot.getByName(`${this.userId}--${botId}`).lastAnswer(),
-    childExcluded: () => [this.#optchat, this.#routineTools, this.#fleet],
+    childExcluded: () => [this.#optchat, this.#routineTools, this.#fleet, this.#ask],
     agentsChanged: async () =>
       this.#user().setAgents(this.botId, (await sessionAgents(this.#agentHost)).filter((a) => a.name !== "main").map(({ name, session }) => ({ name, session }))),
   };
@@ -168,8 +169,34 @@ export class Bot extends DurableObject<Env> {
     const role = main
       ? `You are "${name}", the user's main bot: you run their team of bots. Create, rename, re-instruct and delete bots with the fleet tool when the user asks (or when a new specialist would clearly help, after asking), and hand work to them with the bots tool.`
       : `You are the bot "${name}", one of the user's bots. Each bot is its own agent with its own conversation and memory; reach the others with the bots tool.`;
-    return `${role}${instructions ? `\n\nThe user's instructions for you:\n${instructions}` : ""}`;
+    return (
+      `${role} Before a longer piece of work, send one short line saying what you are about to do, then do it; keep your ` +
+      `final answer a self-contained message. A message that starts with "> " lines quotes the message it replies to.` +
+      `${instructions ? `\n\nThe user's instructions for you:\n${instructions}` : ""}`
+    );
   }
+
+  /** A question with options, as a card in the thread. It doesn't wait: the pick comes back as the user's next message,
+   * written by the UI with answerText (src/shared.ts). */
+  readonly #ask = defineExtension({
+    name: "ask",
+    tools: [
+      defineTool({
+        name: "ask",
+        description:
+          "Ask the user a question with 2-6 short options they pick from with one tap (multiple: true lets them pick several). " +
+          "Use it when a choice is theirs to make. It does not wait: their pick arrives later as their next message, " +
+          '"[answer to \u201c<question>\u201d] <pick>".',
+        parameters: Type.Object({ intent,
+          question: Type.String(),
+          options: Type.Array(Type.String(), { minItems: 2, maxItems: 6 }),
+          multiple: Type.Optional(Type.Boolean()),
+        }),
+        replay: "safe",
+        execute: async () => say("Asked. The user's choice will arrive as their next message; carry on or end your turn."),
+      }),
+    ],
+  });
 
   /** Set by the User DO: the main bot's conversation gets the fleet tool, every other bot's has it removed. */
   async setMain(main: boolean) {
@@ -265,28 +292,28 @@ export class Bot extends DurableObject<Env> {
   }
 
   /** A message in one of the user's groups this bot is in: answered in the group's own conversation (created on first
-   * use, without memory, routines or fleet tools), and logged to this bot's memory so it remembers the group. */
-  async receiveGroup(groupId: string, title: string, members: string[], from: string, text: string) {
+   * use, without memory, routines, fleet or ask tools), and logged to this bot's memory so it remembers the group. The
+   * conversation is re-configured whenever its instructions change (new title, purpose or profile). */
+  async receiveGroup(groupId: string, title: string, purpose: string, members: string[], from: string, text: string) {
     let session = this.ctx.storage.kv.get(`group:session:${groupId}`) as string | undefined;
     if (!session) {
       session = (await this.harness.sessions.create()).id;
-      const conversation = await this.harness.conversation(session);
-      const { name, instructions } = this.#profile();
-      await conversation.configure(
-        {
-          extensions: { remove: [this.#optchat, this.#routineTools, this.#fleet] },
-          instructions:
-            `You are the bot "${name}" in the group chat "${title}" with the user and the bots ${members.filter((m) => m !== name).join(", ")}. ` +
-            `Messages come as "<sender>: <text>". Your final answer is posted to the group as your message, so write it for everyone; ` +
-            `mention a bot as @name to hand it something (only mentioned bots hear a bot's message). If you have nothing useful to add, ` +
-            `answer exactly PASS and nothing is posted.${instructions ? `\n\nThe user's instructions for you:\n${instructions}` : ""}`,
-        },
-        BACKGROUND_CONTEXT,
-      );
       this.ctx.storage.kv.put(`group:session:${groupId}`, session);
       this.ctx.storage.kv.put(`group:of:${session}`, groupId);
-      this.ctx.storage.kv.put(`group:title:${groupId}`, title);
     }
+    const { name, instructions: mine } = this.#profile();
+    const instructions =
+      `You are the bot "${name}" in the group chat "${title}" with the user and the bots ${members.filter((m) => m !== name).join(", ")}. ` +
+      `${purpose ? `What the group is for:\n${purpose}\n\n` : ""}` +
+      `Messages come as "<sender>: <text>"; "> " lines quote the message it replies to. Your final answer is posted to the group as your message, so write it for everyone; ` +
+      `mention a bot as @name to hand it something (only mentioned bots hear a bot's message). If you have nothing useful to add, ` +
+      `answer exactly PASS and nothing is posted.${mine ? `\n\nThe user's instructions for you:\n${mine}` : ""}`;
+    if (this.ctx.storage.kv.get(`group:instructions:${groupId}`) !== instructions) {
+      const conversation = await this.harness.conversation(session);
+      await conversation.configure({ extensions: { remove: [this.#optchat, this.#routineTools, this.#fleet, this.#ask] }, instructions }, BACKGROUND_CONTEXT);
+      this.ctx.storage.kv.put(`group:instructions:${groupId}`, instructions);
+    }
+    this.ctx.storage.kv.put(`group:title:${groupId}`, title);
     this.#openMemory().append("work", `[group "${title}"] ${from}: ${text}`, new Date().toISOString());
     this.#keepPumping();
     await this.harness.session(session).submit(`${from}: ${text}`, { whenBusy: "followUp" });

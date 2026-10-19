@@ -78,15 +78,19 @@ const group = async (groupId: string) => {
   return { user: env.User.getByName(id), room: env.Group.getByName(botObjectName(id, groupId)) };
 };
 export const createGroup = createServerFn({ method: "POST" })
-  .validator((d: { title: string; botIds: string[] }) => d)
+  .validator((d: { title: string; botIds: string[]; purpose: string }) => d)
   .handler(async ({ data }) => {
     // Every member must be the caller's own bot (403 otherwise), like every other bot-scoped call.
     for (const botId of data.botIds) await owner(botId);
-    return { id: await (await user()).createGroup(data.title, data.botIds) };
+    return { id: await (await user()).createGroup(data.title, data.botIds, data.purpose) };
   });
+export const updateGroup = createServerFn({ method: "POST" })
+  .validator((d: { groupId: string; title?: string; purpose?: string }) => d)
+  .handler(async ({ data: { groupId, ...patch } }) => (await group(groupId)).user.updateGroup(groupId, patch));
+/** `replyTo`: the id of the room message this replies to (a bot's message also reaches that bot). */
 export const postToGroup = createServerFn({ method: "POST" })
-  .validator((d: { groupId: string; text: string }) => d)
-  .handler(async ({ data }) => (await group(data.groupId)).room.userPost(data.text));
+  .validator((d: { groupId: string; text: string; replyTo?: string }) => d)
+  .handler(async ({ data }) => (await group(data.groupId)).room.userPost(data.text, data.replyTo));
 export const disbandGroup = createServerFn({ method: "POST" })
   .validator((groupId: string) => groupId)
   .handler(async ({ data }) => (await group(data)).user.disbandGroup(data));

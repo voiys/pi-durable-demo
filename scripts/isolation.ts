@@ -51,12 +51,12 @@ const botDataFiles = () => sqliteFiles().filter((f) => kindOf(f) === "BotData");
 const groupFiles = () => sqliteFiles().filter((f) => kindOf(f) === "Group");
 let victimGroup: string | undefined; // A's throwaway group, disbanded in finally
 /** Fns that reach a bot's BotData DO or the main-bot flag: refused by the owner check itself, so exactly 403 (B) / 401 (anon). */
-const OWNER_CHECKED = new Set(["markSeen", "setMainBot", "readReport", "deleteReport", "postToGroup", "disbandGroup"]);
+const OWNER_CHECKED = new Set(["markSeen", "setMainBot", "readReport", "deleteReport", "postToGroup", "updateGroup", "disbandGroup"]);
 
 try {
   const victim = await make(A, "iso-victim", `Private instructions of A ${tag}`);
   const victim2 = await make(A, "iso-victim2");
-  const created2 = await serverFn(A, "createGroup", "POST", { title: `iso-group-${tag}`, botIds: [victim, victim2] });
+  const created2 = await serverFn(A, "createGroup", "POST", { title: `iso-group-${tag}`, botIds: [victim, victim2], purpose: `Private purpose of A ${tag}` });
   assert.equal(created2.status, 200, `createGroup as A: ${created2.body}`);
   victimGroup = (await userState(A)).groups.find((g) => g.title === `iso-group-${tag}`)?.id;
   assert.ok(victimGroup, "victim group is not in A's state");
@@ -67,7 +67,7 @@ try {
   const aBots = aState.bots;
   const bBots = (await userState(B)).bots;
   const bGroupsBefore = (await userState(B)).groups.length;
-  const aGroupsBefore = aState.groups.length;
+  const aGroupsBefore = JSON.stringify(aState.groups);
   const victimBefore = JSON.stringify(aBots.find((b) => b.id === victim));
   console.log(`A=${A.id} bots=${aBots.length}; B=${B.id} bots=${bBots.length}; running...`);
   needles = [A.id, ...aBots.flatMap((b) => [b.id, b.name, ...(b.instructions.length >= 8 ? [b.instructions] : [])]), ...aState.groups.flatMap((g) => [g.id, ...(g.title.length >= 8 ? [g.title] : [])])];
@@ -156,6 +156,7 @@ try {
   // B may search (its own index) but must see nothing of A's.
   const withGroup = (id: string): [string, "GET" | "POST", unknown][] => [
     ["postToGroup", "POST", { groupId: id, text: "pwned" }],
+    ["updateGroup", "POST", { groupId: id, title: "pwned", purpose: "pwned" }],
     ["disbandGroup", "POST", id],
   ];
   const withBot = (id: string): [string, "GET" | "POST", unknown][] => [
@@ -179,7 +180,7 @@ try {
       ...withBot(crypto.randomUUID()).slice(0, 7),
       ...withGroup(group),
       ...withGroup(crypto.randomUUID()),
-      ["createGroup", "POST", { title: "pwned", botIds: [victim, victim2] }],
+      ["createGroup", "POST", { title: "pwned", botIds: [victim, victim2], purpose: "pwned" }],
       ...(who ? [] : ([["createBot", "POST", { name: "pwned", instructions: "" }], ["modelOptions", "GET", undefined], ["connectChatGPT", "POST", undefined], ["disconnectChatGPT", "POST", undefined]] as [string, "GET" | "POST", unknown][])),
       ["searchMessages", "GET", word ?? "bot"],
     ];
@@ -215,8 +216,8 @@ try {
   record("attacks minted no Bot objects", minted === 0, `${minted} new Bot file(s)`);
   const mintedGroups = groupFiles().length - groupsBefore;
   record("attacks minted no Group objects", mintedGroups === 0, `${mintedGroups} new Group file(s)`);
-  const groupsAfter = [(await userState(A)).groups.length, (await userState(B)).groups.length];
-  record("attacks created, disbanded or changed no group", groupsAfter[0] === aGroupsBefore && groupsAfter[1] === bGroupsBefore, `A ${aGroupsBefore} -> ${groupsAfter[0]}, B ${bGroupsBefore} -> ${groupsAfter[1]}`);
+  const groupsAfter = [JSON.stringify((await userState(A)).groups), (await userState(B)).groups.length] as const;
+  record("attacks created, disbanded or changed (renamed) no group", groupsAfter[0] === aGroupsBefore && groupsAfter[1] === bGroupsBefore, `A ${groupsAfter[0] === aGroupsBefore ? "same" : `${aGroupsBefore} -> ${groupsAfter[0]}`}, B ${bGroupsBefore} -> ${groupsAfter[1]}`);
   const mintedData = botDataFiles().length - botDataBefore;
   record("attacks minted no BotData objects", mintedData === 0, `${mintedData} new BotData file(s)`);
   const victimAfter = JSON.stringify((await userState(A)).bots.find((b) => b.id === victim));
