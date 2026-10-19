@@ -128,12 +128,17 @@ export function ThreadRow({ mine = false, sender, first, last, highlight = false
   );
 }
 
-/** A bubble (DESIGN.md §6): yours blue, theirs gray, an error red with words. The last of a run tucks its outer bottom
- * corner in, as iMessage's tail does. A `reply` bubble offers "Reply" beside it, and its text can be quoted. */
-export function Said({ mine = false, tail, error = false, reply, children }: { mine?: boolean; tail: boolean; error?: boolean; reply?: Quote; children: ReactNode }) {
+/** Where a bubble sits in its sender's run: the run's outer corners stay round, the corners where its bubbles meet
+ * tuck in on the sender's side (DESIGN.md §6). A bubble alone is round all over. */
+type Run = { first?: boolean; last?: boolean };
+const runCorners = (mine: boolean, { first = true, last = true }: Run) => cn(!first && (mine ? "rounded-tr-sm" : "rounded-tl-sm"), !last && (mine ? "rounded-br-sm" : "rounded-bl-sm"));
+
+/** A bubble (DESIGN.md §6): yours blue, theirs gray, an error red with words. A `reply` bubble offers "Reply" beside it,
+ * and its text can be quoted. */
+export function Said({ mine = false, run = {}, error = false, reply, children }: { mine?: boolean; run?: Run; error?: boolean; reply?: Quote; children: ReactNode }) {
   const bubble = (
     <Bubble align={mine ? "end" : "start"} variant={error ? "destructive" : mine ? "default" : "muted"} role={error ? "alert" : undefined}>
-      <BubbleContent className={cn(mine && "whitespace-pre-wrap", tail && (mine ? "rounded-br-sm" : "rounded-bl-sm"))}>{children}</BubbleContent>
+      <BubbleContent className={cn(mine && "whitespace-pre-wrap", runCorners(mine, run))}>{children}</BubbleContent>
     </Bubble>
   );
   return reply ? (
@@ -147,18 +152,18 @@ export function Said({ mine = false, tail, error = false, reply, children }: { m
 
 /** Your message as its bubble: any quotes it opens with as excerpts on top (`replied`: the group message it replies
  * to), then your words; an answer to a bot's question as the option you picked, captioned. `id` is its group message id. */
-export function YourSaid({ text, tail, replied, id }: { text: string; tail: boolean; replied?: { sender: string; text: string }; id?: string }) {
+export function YourSaid({ text, run, replied, id }: { text: string; run: Run; replied?: { sender: string; text: string }; id?: string }) {
   const answer = parseAnswer(text);
   if (answer)
     return (
-      <Said mine tail={tail} reply={{ sender: "You", text: answer.answer, replyTo: id }}>
+      <Said mine run={run} reply={{ sender: "You", text: answer.answer, replyTo: id }}>
         {answer.answer}
         <span className="block pt-0.5 text-xs font-medium">Answered</span>
       </Said>
     );
   const { quotes, body } = parseQuotes(text);
   return (
-    <Said mine tail={tail} reply={{ sender: "You", text: body, replyTo: id }}>
+    <Said mine run={run} reply={{ sender: "You", text: body, replyTo: id }}>
       {[...(replied ? [replied] : []), ...quotes].map((q, i) => (
         <QuoteBlock key={i} {...q} />
       ))}
@@ -169,10 +174,10 @@ export function YourSaid({ text, tail, replied, id }: { text: string; tail: bool
 
 /** The bot writing its next message: three dots in a gray bubble, breathing in turn (still under reduced motion). The
  * words replace it whole once the block is written. */
-function Typing({ tail }: { tail: boolean }) {
+function Typing({ run }: { run: Run }) {
   return (
     <Bubble variant="muted" role="status">
-      <BubbleContent className={cn("flex h-lh box-content items-center gap-1", tail && "rounded-bl-sm")}>
+      <BubbleContent className={cn("flex h-lh box-content items-center gap-1", runCorners(false, run))}>
         <span className="sr-only">Typing…</span>
         {["", "[animation-delay:150ms]", "[animation-delay:300ms]"].map((delay) => (
           <span key={delay} aria-hidden className={cn("bg-muted-foreground size-2 rounded-full opacity-60 motion-safe:animate-typing", delay)} />
@@ -420,6 +425,9 @@ function ReportCard({ id, title }: { id: number; title: string }) {
  * `between`: the run goes on with nothing live (see BotPane). `answerOf` is the answer you gave to a question after this turn. */
 function BotTurn({ turn, ctx, name, writing, between, answerOf, onAnswer }: { turn: PiTurn; ctx: ToolContext; name: string; writing?: PiMessagePart; between: boolean; answerOf: (question: string) => string | undefined; onAnswer: (text: string) => void }) {
   const groups = groupParts(turn.parts, writing);
+  // The turn's words are one run, whatever activity sits between them.
+  const said = groups.flatMap((g, i) => ("text" in g ? [i] : []));
+  const run = (i: number) => ({ first: i === said[0], last: i === said.at(-1) });
   const rise = useCalm(RISE);
   return (
     <>
@@ -430,11 +438,11 @@ function BotTurn({ turn, ctx, name, writing, between, answerOf, onAnswer }: { tu
           "text" in g ? (
             g.part === writing ? (
               <motion.div key={`typing:${i}`} className="flex flex-col" variants={FADE} initial="initial" animate="animate">
-                <Typing tail={!groups[i + 1]} />
+                <Typing run={run(i)} />
               </motion.div>
             ) : (
               <motion.div key={`text:${i}`} className="flex flex-col" variants={FADE} initial="initial" animate="animate">
-                <Said tail={!groups[i + 1] || !("text" in groups[i + 1])} reply={{ sender: name, text: g.text }}>
+                <Said run={run(i)} reply={{ sender: name, text: g.text }}>
                   <Markdown>{g.text}</Markdown>
                 </Said>
               </motion.div>
@@ -462,7 +470,7 @@ function BotTurn({ turn, ctx, name, writing, between, answerOf, onAnswer }: { tu
         <Status>Stopped</Status>
       ) : (
         turn.error && (
-          <Said tail error>
+          <Said error>
             Couldn't finish: {turn.error}
           </Said>
         )
@@ -584,11 +592,11 @@ export function BotPane({ userId, bot, session: sessionId, entry, bots }: { user
                       {v.turn.role === "assistant" ? (
                         <BotTurn turn={v.turn} ctx={ctx} name={name} writing={v.turn.live ? writing : undefined} between={between && !next} answerOf={answerAfter(i)} onAnswer={answer} />
                       ) : v.agent ? (
-                        <Said tail={last} reply={{ sender: v.sender!.name, text: v.agent.body }}>
+                        <Said run={{ first, last }} reply={{ sender: v.sender!.name, text: v.agent.body }}>
                           <Markdown>{v.agent.body}</Markdown>
                         </Said>
                       ) : (
-                        <YourSaid text={v.text} tail={last} />
+                        <YourSaid text={v.text} run={{ first, last }} />
                       )}
                       {mine && !next && <Status working={working}>{working ? workingLabel : "Delivered"}</Status>}
                     </ThreadRow>
@@ -601,7 +609,7 @@ export function BotPane({ userId, bot, session: sessionId, entry, bots }: { user
           {session.error && (
             <MessageScrollerItem messageId="error" className="pt-3">
               <ThreadRow first last>
-                <Said tail error>
+                <Said error>
                   {session.error}
                 </Said>
               </ThreadRow>

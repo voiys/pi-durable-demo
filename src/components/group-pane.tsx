@@ -99,9 +99,9 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
                 <ThreadItem id={m.id} first={first} enter={enter} mine={mine} anchor={i === anchorAt}>
                   <ThreadRow mine={mine} sender={mine ? undefined : sender(m.from!)} first={first} last={last}>
                     {mine ? (
-                      <YourSaid text={m.text} tail={last} id={m.id} replied={m.replyTo ? said(m.replyTo) : undefined} />
+                      <YourSaid text={m.text} run={{ first, last }} id={m.id} replied={m.replyTo ? said(m.replyTo) : undefined} />
                     ) : (
-                      <Said tail={last} reply={{ sender: sender(m.from!).name, text: m.text, replyTo: m.id }}>
+                      <Said run={{ first, last }} reply={{ sender: sender(m.from!).name, text: m.text, replyTo: m.id }}>
                         <Markdown>{m.text}</Markdown>
                       </Said>
                     )}

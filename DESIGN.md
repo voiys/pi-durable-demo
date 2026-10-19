@@ -125,8 +125,9 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
 - Pure white canvas. Header: centered avatar (24px) over name (13px/510) — tapping opens details (Messages' contact
   header). No horizontal rule; content scrolls under a 0.5px hairline that appears only once scrolled.
 - **Bubbles:** yours `--primary` right; theirs `--muted` left; 18px radius; 10px/14px padding; max 75% width (520px).
-  Consecutive bubbles from one sender group: only the last shows the tail-corner (4px radius on the outer bottom corner),
-  only the first shows the sender name (groups), avatar only on the last.
+  Consecutive bubbles from one sender group into one stack (a bot turn's words are one stack, activity between them
+  or not): the stack's outer corners stay 18px, the corners where its bubbles meet drop to 4px on the sender's side
+  (first: bottom; middle: top and bottom; last: top). Only the first shows the sender name (groups), avatar only on the last.
 - **Time divider:** caption, centered, `Today 12:11`, shown when 30+ min pass. No lines.
 - **Delivered:** under your last bubble, caption gray: "Delivered" → "Working…" (live line) → the reply. No "Read" step:
   a bot reads instantly, so it would only flash (decided 2026-10-19).
