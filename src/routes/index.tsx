@@ -44,13 +44,13 @@ export const Route = createFileRoute("/")({
 const status = (b: Pick<BotSummary, "working" | "unread">) => (b.working ? "Working" : b.unread ? "New messages" : undefined);
 
 /**
- * A face in the rail. The ring says which conversation is open (blue) or that the bot is working (its own color,
- * pulsing; steady under reduced motion); an open bot that is working pulses blue. The ring is always 2px, so moving it
- * only changes its color (150ms). The dot is unread, never on the open one: it pops in once (scale 0.6 to 1, 200ms spring,
+ * A face in the rail. The open conversation gets a small ink bar at the rail's edge (macOS Dock / Linear), never a ring
+ * around the face; hovering a closed one shows a shorter bar. A working bot gets a 2px ring in its own color, pulsing
+ * (steady under reduced motion). The dot is unread, never on the open one: it pops in once (scale 0.6 to 1, 200ms spring,
  * no bounce; a fade under reduced motion) and fades out when read. A new face rises into the rail (ARRIVE).
  * Resting on it (or focusing it) shows a small card with a glance at who it is; the face itself opens the conversation.
  */
-function RailItem({ label, active, working = false, unread = false, color, onClick, face, card }: { label: string; active: boolean; working?: boolean; unread?: boolean; color?: string; onClick: () => void; face: ReactNode; card: Omit<GlanceProps, "face" | "open"> & { openable: boolean } }) {
+function RailItem({ label, active, working = false, unread = false, color, onClick, face, card }: { label: string; active: boolean; working?: boolean; unread?: boolean; color?: string; onClick: () => void; face: ReactNode; card: Omit<GlanceProps, "face"> }) {
   return (
     <HoverCard openDelay={300} closeDelay={100}>
       <HoverCardTrigger asChild>
@@ -60,15 +60,22 @@ function RailItem({ label, active, working = false, unread = false, color, onCli
           aria-current={active || undefined}
           onClick={onClick}
           // flex: an inline button's line box would push the ring off the avatar's center.
-          className="relative flex shrink-0 rounded-[15px] p-[3px] focus-visible:outline-2 focus-visible:outline-offset-1"
+          className="group/rail relative flex shrink-0 rounded-[15px] p-[3px] focus-visible:outline-2 focus-visible:outline-offset-1"
         >
+          {/* The rail is 64px and the item 42px, so the bar sits 11px out, on the rail's edge. */}
+          <span
+            aria-hidden
+            className={cn(
+              "bg-foreground pointer-events-none absolute top-1/2 -left-[11px] w-1 -translate-y-1/2 rounded-r-full transition-[height,opacity] duration-150 ease-out",
+              active ? "h-5 opacity-100" : "h-2 opacity-0 group-hover/rail:opacity-100",
+            )}
+          />
           <span
             aria-hidden
             style={{ "--bot": color } as CSSProperties}
             className={cn(
               "pointer-events-none absolute inset-0 rounded-[15px] ring-2 transition-[box-shadow] duration-150 ease-out ring-inset",
-              active ? "ring-primary" : working ? "ring-(color:--bot)" : "ring-transparent",
-              working && "motion-safe:animate-ring-pulse",
+              working ? "ring-(color:--bot) motion-safe:animate-ring-pulse" : "ring-transparent",
             )}
           />
           {face}
@@ -87,16 +94,16 @@ function RailItem({ label, active, working = false, unread = false, color, onCli
       </HoverCardTrigger>
       {/* The faces' rings are cut in the rail's canvas color; on the card they are cut in its surface instead. */}
       <HoverCardContent side="right" align="start" className="flex flex-col gap-3 [--canvas:var(--popover)]">
-        <Glance face={face} name={card.name} line={card.line} about={card.about} open={card.openable ? onClick : undefined} />
+        <Glance face={face} name={card.name} line={card.line} about={card.about} />
       </HoverCardContent>
     </HoverCard>
   );
 }
 
-/** The rail card's body: the face beside the name and a line of status, a few lines about it, and "Open" unless it
- * already is. */
-type GlanceProps = { face: ReactNode; name: string; line: string; about?: string; open?: () => void };
-function Glance({ face, name, line, about, open }: GlanceProps) {
+/** The rail card's body: the face beside the name and a line of status, and a few lines about it. No "Open": clicking
+ * the face opens it. */
+type GlanceProps = { face: ReactNode; name: string; line: string; about?: string };
+function Glance({ face, name, line, about }: GlanceProps) {
   return (
     <>
       <div className="flex items-center gap-3">
@@ -107,11 +114,6 @@ function Glance({ face, name, line, about, open }: GlanceProps) {
         </div>
       </div>
       {about && <p className="text-muted-foreground line-clamp-3 break-words">{about}</p>}
-      {open && (
-        <Button size="sm" variant="secondary" className="self-start" onClick={open}>
-          Open
-        </Button>
-      )}
     </>
   );
 }
@@ -167,7 +169,7 @@ function App() {
   return (
     <div className="bg-background flex h-svh overflow-hidden">
       <nav aria-label="Bots" className="bg-canvas flex w-16 shrink-0 flex-col items-center gap-3 py-3">
-        <div className="flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto overscroll-contain">
+        <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto overscroll-contain">
           {/* The main bot sits on top, apart from the rest; groups come after another hairline. Mounted with the first
               state, so the faces already there don't animate; later ones rise in and leave faster (ARRIVE). */}
           {state && (
@@ -186,7 +188,7 @@ function App() {
                     color={b.color}
                     onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}
                     face={<BotAvatar bot={b} />}
-                    card={{ name: b.name, line: [main && "Main bot", status(b) ?? "Up to date"].filter(Boolean).join(" · "), about: b.instructions, openable: !active || !!subagent }}
+                    card={{ name: b.name, line: [main && "Main bot", status(b) ?? "Up to date"].filter(Boolean).join(" · "), about: b.instructions }}
                   />,
                 ];
               })}
@@ -201,7 +203,7 @@ function App() {
                     active={active}
                     onClick={() => navigate({ search: (s) => ({ group: g.id, panel: s.panel === "search" ? "search" : undefined }) })}
                     face={<GroupAvatar members={members} />}
-                    card={{ name: g.title, line: `Group of ${members.length} bots`, about: members.map((m) => m.name).join(", "), openable: !active }}
+                    card={{ name: g.title, line: `Group of ${members.length} bots`, about: members.map((m) => m.name).join(", ") }}
                   />
                 );
               })}

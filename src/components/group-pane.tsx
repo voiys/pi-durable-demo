@@ -26,9 +26,10 @@ export function GroupAvatar({ members, size = "md" }: { members: Pick<BotSummary
   const shown = members.slice(0, 3);
   if (size === "md")
     return (
-      <span aria-hidden className="relative flex size-9 items-center justify-center">
+      // The same 36px rounded square as a bot's face, so every rail item has one shape; the faces sit inside it.
+      <span aria-hidden className="bg-muted relative flex size-9 shrink-0 rounded-xl">
         {shown.map((m, i) => (
-          <BotAvatar key={i} bot={m} size="sm" className={cn("ring-canvas absolute rounded-full ring-2", ["top-0 left-0 size-6", "right-0 bottom-0 size-6", "top-0 right-0 size-5"][i])} />
+          <BotAvatar key={i} bot={m} size="sm" className={cn("ring-muted absolute rounded-full text-[10px] ring-2", ["top-1 left-1 size-5", "right-1 bottom-1 size-5", "top-1 right-1 size-4"][i])} />
         ))}
       </span>
     );
