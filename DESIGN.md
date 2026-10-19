@@ -106,6 +106,10 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   rgb(0 0 0/.08)`; composer `0 1px 2px rgb(0 0 0/.06), 0 0 0 0.5px var(--hairline)`. Dark: hairline inset
   `0 0 0 1px rgb(255 255 255/.06) inset` instead of drop shadows (Linear).
 - **Layout:** rail 64px · thread max 720px centered · panel 320px · below 768px the panel replaces the thread.
+- **Controls (src/components/ui):** heights 24/28/32/36 (buttons, toggles), inputs 36; menu and list rows 32 min. Hover
+  is the translucent `--accent` fill on every surface; a selected toggle is ink (`--foreground`), never blue. Focus is a
+  2px `--ring` outline 2px off the edge; rows in scrolling lists draw it 2px inside; inputs turn their border ring-color
+  and add a 1px outline. Neutral fills (secondary buttons, chips) are `--muted`, as the incoming bubble is.
 
 ## 6. Components
 

@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { Label } from "@/components/ui/label";
+import { Field, FieldTitle } from "@/components/ui/field";
 import { Slider } from "@/components/ui/slider";
 
 /** A labelled slider over named steps. It follows the drag locally and saves once, on release (`onCommit`). `ticks`
@@ -9,15 +9,13 @@ export function StepSlider({ label, steps, value, onCommit, ticks = false }: { l
   const id = useId();
   const shown = dragging ?? value;
   return (
-    <div className="grid gap-3">
+    <Field className="gap-3">
       <div className="flex items-baseline justify-between gap-2">
-        <Label htmlFor={id} className="text-sm font-medium">
-          {label}
-        </Label>
+        <FieldTitle id={id}>{label}</FieldTitle>
         <span className="text-muted-foreground text-sm tabular-nums">{steps[shown]}</span>
       </div>
       <Slider
-        id={id}
+        aria-labelledby={id}
         aria-valuetext={steps[shown]}
         min={0}
         max={steps.length - 1}
@@ -32,6 +30,6 @@ export function StepSlider({ label, steps, value, onCommit, ticks = false }: { l
           <span>{steps[steps.length - 1]}</span>
         </div>
       )}
-    </div>
+    </Field>
   );
 }

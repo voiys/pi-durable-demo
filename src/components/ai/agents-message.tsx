@@ -60,7 +60,7 @@ export function SystemEvent({ msg }: { msg: AgentMsg }) {
         <MarkerContent>
           <CollapsibleTrigger
             className={cn(
-              "text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 rounded-sm px-1.5 text-xs font-medium transition-colors outline-none focus-visible:ring-3",
+              "text-muted-foreground hover:text-foreground rounded-sm px-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
               failed && "text-destructive hover:text-destructive",
             )}
           >

@@ -154,7 +154,7 @@ function Sources({ hits }: { hits: { title: string; url: string }[] }) {
               {h.title}
               <span className="sr-only"> (opens in a new tab)</span>
             </TraceTitle>
-            <TraceDescription className="text-muted-foreground">{host(h.url)}</TraceDescription>
+            <TraceDescription>{host(h.url)}</TraceDescription>
           </TraceLine>
         </a>
       ))}

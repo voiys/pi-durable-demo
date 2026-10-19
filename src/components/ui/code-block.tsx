@@ -8,14 +8,12 @@ import { Button } from "@/components/ui/button"
 import { CheckIcon, CopyIcon } from "lucide-react"
 
 const codeBlockVariants = cva(
-  "group/code-block relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg text-sm has-[>[data-slot=code-block-content]:focus-visible]:ring-3 has-[>[data-slot=code-block-content]:focus-visible]:ring-ring/50 data-[size=sm]:text-xs",
+  "group/code-block relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg border text-sm has-[>[data-slot=code-block-content]:focus-visible]:outline-2 has-[>[data-slot=code-block-content]:focus-visible]:outline-offset-2 data-[size=sm]:text-xs",
   {
     variants: {
       variant: {
-        default:
-          "border border-input text-foreground has-[>[data-slot=code-block-content]:focus-visible]:border-ring dark:bg-input/30",
-        destructive:
-          "border border-destructive/30 text-destructive dark:border-destructive/40",
+        default: "border-border text-foreground",
+        destructive: "border-destructive/30 text-destructive",
       },
     },
     defaultVariants: {
@@ -60,7 +58,7 @@ function CodeBlockTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="code-block-title"
       className={cn(
-        "min-w-0 truncate font-sans text-sm font-medium text-foreground group-data-[size=sm]/code-block:text-xs group-data-[variant=destructive]/code-block:text-destructive [&_svg]:pointer-events-none [&_svg]:inline-block [&_svg]:align-middle [&_svg:not([class*='size-'])]:size-4 group-data-[size=sm]/code-block:[&_svg:not([class*='size-'])]:size-3.5 *:[svg]:me-1.5",
+        "min-w-0 truncate font-sans text-xs font-medium text-muted-foreground group-data-[variant=destructive]/code-block:text-destructive [&_svg]:pointer-events-none [&_svg]:inline-block [&_svg]:align-middle [&_svg:not([class*='size-'])]:size-4 group-data-[size=sm]/code-block:[&_svg:not([class*='size-'])]:size-3.5 *:[svg]:me-1.5",
         className
       )}
       {...props}
@@ -76,7 +74,7 @@ function CodeBlockActions({
     <div
       data-slot="code-block-actions"
       className={cn(
-        "-my-1 ms-auto -me-1.5 flex shrink-0 items-center gap-1 [[data-slot=code-block]>&]:absolute [[data-slot=code-block]>&]:end-3 [[data-slot=code-block]>&]:top-3 [[data-slot=code-block]>&]:z-10 [[data-slot=code-block]>&]:m-0 [[data-slot=code-block]>&]:opacity-0 [[data-slot=code-block]>&]:transition-opacity [[data-slot=code-block]>&]:group-focus-within/code-block:opacity-100 [[data-slot=code-block]>&]:group-hover/code-block:opacity-100 group-data-[size=sm]/code-block:[[data-slot=code-block]>&]:end-2 group-data-[size=sm]/code-block:[[data-slot=code-block]>&]:top-2 [[data-slot=code-block]>&]:pointer-coarse:opacity-100 [[data-slot=code-block]>&]:*:[button]:bg-background [[data-slot=code-block]>&]:*:[button]:ring-1 [[data-slot=code-block]>&]:*:[button]:ring-foreground/10",
+        "-my-1 ms-auto -me-1.5 flex shrink-0 items-center gap-1 [[data-slot=code-block]>&]:absolute [[data-slot=code-block]>&]:end-3 [[data-slot=code-block]>&]:top-3 [[data-slot=code-block]>&]:z-10 [[data-slot=code-block]>&]:m-0 [[data-slot=code-block]>&]:opacity-0 [[data-slot=code-block]>&]:transition-opacity [[data-slot=code-block]>&]:group-focus-within/code-block:opacity-100 [[data-slot=code-block]>&]:group-hover/code-block:opacity-100 group-data-[size=sm]/code-block:[[data-slot=code-block]>&]:end-2 group-data-[size=sm]/code-block:[[data-slot=code-block]>&]:top-2 [[data-slot=code-block]>&]:pointer-coarse:opacity-100 [[data-slot=code-block]>&]:*:[button]:bg-popover [[data-slot=code-block]>&]:*:[button]:shadow-float [[data-slot=code-block]>&]:*:[button]:hover:bg-popover",
         className
       )}
       {...props}
@@ -114,20 +112,12 @@ function CodeBlockCopyButton({
         className={cn(className)}
         onClick={(event) => {
           onClick?.(event)
-          navigator.clipboard
-            .writeText(value)
-            .then(() => setCopied(true))
-            .catch(() => {})
+          // No catch: a refused clipboard write surfaces as an unhandled rejection instead of a silent no-op.
+          void navigator.clipboard.writeText(value).then(() => setCopied(true))
         }}
         {...props}
       >
-        {copied ? (
-          <CheckIcon
-          />
-        ) : (
-          <CopyIcon
-          />
-        )}
+        {copied ? <CheckIcon /> : <CopyIcon />}
       </Button>
       <span aria-live="polite" className="sr-only">
         {copied ? "Copied" : ""}

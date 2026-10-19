@@ -29,18 +29,18 @@ export function NavUser({ user, chatgpt }: { user: { name: string; email: string
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="rounded-full" aria-label={`Account: ${user.email}`}>
           <Avatar className="size-8">
-            <AvatarFallback className="bg-muted text-sm font-medium">{initial}</AvatarFallback>
+            <AvatarFallback>{initial}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="shadow-float min-w-60 rounded-lg border-0 text-sm" side="right" align="end" sideOffset={8}>
-        <DropdownMenuLabel className="flex flex-col gap-0.5 px-2 py-1.5 font-normal">
+      <DropdownMenuContent className="min-w-60" side="right" align="end" sideOffset={8}>
+        <DropdownMenuLabel className="flex flex-col gap-0.5 font-normal">
           <span className="truncate font-medium">{user.name}</span>
           <span className="text-muted-foreground truncate">{user.email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-muted-foreground flex flex-col gap-0.5 px-2 py-1.5 text-xs font-medium">
+          <DropdownMenuLabel className="text-muted-foreground flex flex-col gap-0.5 text-xs">
             ChatGPT plan
             <span className="truncate text-sm font-normal">{chatgpt ? chatgpt.email : "Not connected"}</span>
           </DropdownMenuLabel>

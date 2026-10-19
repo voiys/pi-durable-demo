@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, fail } from "@/lib/utils";
 import { getSession, markSeen } from "@/server/fns";
@@ -37,23 +38,24 @@ export const Route = createFileRoute("/")({
   component: App,
 });
 
-/** The glance layer in words, for the tooltip and the accessible name (DESIGN.md §6 Rail). */
+/** The glance layer in words, for the rail's card and the accessible name (DESIGN.md §6 Rail). */
 const status = (b: Pick<BotSummary, "working" | "unread">) => (b.working ? "Working" : b.unread ? "New messages" : undefined);
 
 /**
  * A face in the rail. The ring says which conversation is open (blue) or that the bot is working (its own color,
  * pulsing; steady under reduced motion); an open bot that is working pulses blue. The dot is unread, never on the open one.
+ * Resting on it (or focusing it) shows a small card with a glance at who it is; the face itself opens the conversation.
  */
-function RailItem({ name, label, detail, active, working = false, unread = false, color, onClick, children }: { name: string; label: string; detail?: string; active: boolean; working?: boolean; unread?: boolean; color?: string; onClick: () => void; children: ReactNode }) {
+function RailItem({ label, active, working = false, unread = false, color, onClick, face, card }: { label: string; active: boolean; working?: boolean; unread?: boolean; color?: string; onClick: () => void; face: ReactNode; card: Omit<GlanceProps, "face" | "open"> & { openable: boolean } }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
+    <HoverCard openDelay={300} closeDelay={100}>
+      <HoverCardTrigger asChild>
         <button
           aria-label={label}
           aria-current={active || undefined}
           onClick={onClick}
           // flex: an inline button's line box would push the ring off the avatar's center.
-          className="focus-visible:outline-ring relative flex shrink-0 rounded-[15px] p-[3px] outline-none focus-visible:outline-2 focus-visible:outline-offset-1"
+          className="relative flex shrink-0 rounded-[15px] p-[3px] focus-visible:outline-2 focus-visible:outline-offset-1"
         >
           <span
             aria-hidden
@@ -64,15 +66,38 @@ function RailItem({ name, label, detail, active, working = false, unread = false
               working && "motion-safe:animate-pulse motion-safe:[animation-duration:1.6s]",
             )}
           />
-          {children}
+          {face}
           {unread && !active && <span aria-hidden className="bg-primary ring-canvas absolute top-0 right-0 size-2 rounded-full ring-2" />}
         </button>
-      </TooltipTrigger>
-      <TooltipContent side="right" sideOffset={6} className="flex flex-col gap-0.5 text-sm">
-        <span className="font-medium">{name}</span>
-        {detail && <span className="opacity-70">{detail}</span>}
-      </TooltipContent>
-    </Tooltip>
+      </HoverCardTrigger>
+      {/* The faces' rings are cut in the rail's canvas color; on the card they are cut in its surface instead. */}
+      <HoverCardContent side="right" align="start" className="flex flex-col gap-3 [--canvas:var(--popover)]">
+        <Glance face={face} name={card.name} line={card.line} about={card.about} open={card.openable ? onClick : undefined} />
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+/** The rail card's body: the face beside the name and a line of status, a few lines about it, and "Open" unless it
+ * already is. */
+type GlanceProps = { face: ReactNode; name: string; line: string; about?: string; open?: () => void };
+function Glance({ face, name, line, about, open }: GlanceProps) {
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        {face}
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate font-medium">{name}</span>
+          <span className="text-muted-foreground truncate text-xs font-medium">{line}</span>
+        </div>
+      </div>
+      {about && <p className="text-muted-foreground line-clamp-3 break-words">{about}</p>}
+      {open && (
+        <Button size="sm" variant="secondary" className="self-start" onClick={open}>
+          Open
+        </Button>
+      )}
+    </>
   );
 }
 
@@ -81,8 +106,8 @@ function EmptyState({ title, children, action }: { title: string; children: Reac
   return (
     <Empty className="gap-6">
       <EmptyHeader className="gap-2">
-        <EmptyTitle className="text-2xl font-semibold">{title}</EmptyTitle>
-        <EmptyDescription className="text-base">{children}</EmptyDescription>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{children}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>{action}</EmptyContent>
     </Empty>
@@ -114,6 +139,11 @@ function App() {
     document.addEventListener("visibilitychange", see);
     return () => document.removeEventListener("visibilitychange", see);
   }, [reading?.id, reading?.unread]);
+  // A helper that was retired (an old link, a search hit) leads back to its bot.
+  const gone = bot && search.agent && !subagent;
+  useEffect(() => {
+    if (gone) void navigate({ search: (s) => ({ bot: bot.id, panel: s.panel }), replace: true });
+  }, [gone]);
   const togglePanel = (panel: "details" | "search") => navigate({ search: (s) => ({ ...s, panel: s.panel === panel ? undefined : panel }) });
   const showing = !search.new && (group ?? bot);
 
@@ -122,28 +152,39 @@ function App() {
       <nav aria-label="Bots" className="bg-canvas flex w-16 shrink-0 flex-col items-center gap-3 py-3">
         <div className="flex min-h-0 flex-1 flex-col items-center gap-2 overflow-y-auto overscroll-contain">
           {/* The main bot sits on top, apart from the rest; groups come after another hairline. */}
-          {mainFirst.map((b, i) => [
-            i === 1 && <Separator key="sep" className="w-8" />,
-            <RailItem
-              key={b.id}
-              name={b.name}
-              label={[b.name, b.id === state?.mainBot && "main bot", status(b)].filter(Boolean).join(", ")}
-              detail={status(b)}
-              active={!search.new && !group && b.id === bot?.id}
-              working={b.working}
-              unread={b.unread}
-              color={b.color}
-              onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}
-            >
-              <BotAvatar bot={b} />
-            </RailItem>,
-          ])}
+          {mainFirst.map((b, i) => {
+            const active = !search.new && !group && b.id === bot?.id;
+            const main = b.id === state?.mainBot;
+            return [
+              i === 1 && <Separator key="sep" className="w-8" />,
+              <RailItem
+                key={b.id}
+                label={[b.name, main && "main bot", status(b)].filter(Boolean).join(", ")}
+                active={active}
+                working={b.working}
+                unread={b.unread}
+                color={b.color}
+                onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}
+                face={<BotAvatar bot={b} />}
+                card={{ name: b.name, line: [main && "Main bot", status(b) ?? "Up to date"].filter(Boolean).join(" · "), about: b.instructions, openable: !active || !!subagent }}
+              />,
+            ];
+          })}
           {state && state.groups.length > 0 && <Separator className="w-8" />}
-          {state?.groups.map((g) => (
-            <RailItem key={g.id} name={g.title} label={`${g.title}, group`} active={g.id === search.group && !search.new} onClick={() => navigate({ search: (s) => ({ group: g.id, panel: s.panel === "search" ? "search" : undefined }) })}>
-              <GroupAvatar members={membersOf(g)} />
-            </RailItem>
-          ))}
+          {state?.groups.map((g) => {
+            const active = g.id === search.group && !search.new;
+            const members = membersOf(g);
+            return (
+              <RailItem
+                key={g.id}
+                label={`${g.title}, group`}
+                active={active}
+                onClick={() => navigate({ search: (s) => ({ group: g.id, panel: s.panel === "search" ? "search" : undefined }) })}
+                face={<GroupAvatar members={members} />}
+                card={{ name: g.title, line: `Group of ${members.length} bots`, about: members.map((m) => m.name).join(", "), openable: !active }}
+              />
+            );
+          })}
         </div>
         {state?.chatgpt ? (
           <DropdownMenu>
@@ -155,11 +196,11 @@ function App() {
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent side="right" className="text-sm">
+              <TooltipContent side="right">
                 New
               </TooltipContent>
             </Tooltip>
-            <DropdownMenuContent side="right" align="end" sideOffset={8} className="shadow-float min-w-40 rounded-lg border-0 text-sm">
+            <DropdownMenuContent side="right" align="end" sideOffset={8}>
               <DropdownMenuGroup>
                 <DropdownMenuItem onSelect={() => navigate({ search: { new: "bot" } })}>New bot</DropdownMenuItem>
                 <DropdownMenuItem disabled={bots.length < 2} onSelect={() => navigate({ search: { new: "group" } })}>
@@ -177,7 +218,7 @@ function App() {
                 <Plus />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right" className="text-sm">
+            <TooltipContent side="right">
               Connect ChatGPT first
             </TooltipContent>
           </Tooltip>
@@ -189,13 +230,13 @@ function App() {
               size="icon"
               aria-label="Search all bots"
               aria-pressed={search.panel === "search"}
-              className="text-muted-foreground hover:text-foreground aria-pressed:text-foreground aria-pressed:bg-sidebar-accent rounded-full"
+              className="text-muted-foreground hover:text-foreground aria-pressed:text-foreground aria-pressed:bg-accent rounded-full"
               onClick={() => togglePanel("search")}
             >
               <Search />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="right" className="text-sm">
+          <TooltipContent side="right">
             Search
           </TooltipContent>
         </Tooltip>
@@ -216,7 +257,7 @@ function App() {
         ) : group ? (
           <GroupPane key={group.id} userId={user.id} groupId={group.id} bots={bots} />
         ) : bot ? (
-          <BotPane key={`${bot.id}:${search.agent ?? "main"}`} userId={user.id} bot={bot} session={search.agent} entry={search.entry} bots={bots} />
+          <BotPane key={`${bot.id}:${subagent?.session ?? "main"}`} userId={user.id} bot={bot} session={subagent?.session} entry={search.entry} bots={bots} />
         ) : state && !state.chatgpt ? (
           <EmptyState title="Connect your ChatGPT plan" action={<Button onClick={connect}>Continue with ChatGPT</Button>}>
             Your bots run on your own ChatGPT plan. Connect it once and they're ready to work.
@@ -239,7 +280,7 @@ function App() {
             </Button>
           </div>
           {search.panel === "search" ? (
-            <SearchPanel bots={bots} onOpen={(h) => navigate({ search: { bot: h.botId, entry: h.entryId, panel: "search" } })} />
+            <SearchPanel bots={bots} />
           ) : group ? (
             <GroupPanel key={group.id} group={group} bots={bots} onDisbanded={() => navigate({ search: {} })} />
           ) : (
@@ -249,8 +290,6 @@ function App() {
                 bot={bot}
                 main={state?.mainBot === bot.id}
                 report={search.report}
-                onOpenReport={(report) => navigate({ search: (s) => ({ ...s, report }) })}
-                onOpenAgent={(session) => navigate({ search: (s) => ({ ...s, bot: bot.id, agent: session }) })}
                 onDeleted={() => navigate({ search: {} })}
               />
             )

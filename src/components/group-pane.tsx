@@ -1,15 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { Markdown } from "@/components/ai/markdown";
 import type { Sender } from "@/components/ai/agents-message";
 import { BotAvatar } from "@/components/bot-avatar";
-import { InlineConfirm } from "@/components/inline-confirm";
-import { breaksTime, Composer, HeaderBar, Said, Status, Thread, ThreadEmpty, ThreadItem, ThreadRow, TimeDivider, WorkingRow } from "@/components/bot-pane";
+import { InlineConfirm, QUIET } from "@/components/inline-confirm";
+import { breaksTime, Composer, HeaderBar, Said, Status, Thread, ThreadEmpty, ThreadItem, ThreadRow, ThreadSkeleton, TimeDivider, WorkingRow } from "@/components/bot-pane";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Item, ItemContent, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn, fail } from "@/lib/utils";
 import { createGroup, disbandGroup, postToGroup } from "@/server/fns";
@@ -62,6 +63,7 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Thread busy={!!working}>
+        {!state && <ThreadSkeleton />}
         {state && messages.length === 0 && (
           <ThreadEmpty
             face={<GroupAvatar members={state.members.map((m) => member(m.id))} size="lg" />}
@@ -101,49 +103,58 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
   );
 }
 
-/** "New group", in place: which bots, and a name. */
+/** "New group", in place: which bots, and a name. Checked on submit: too few bots is said under them and focus goes
+ * back to the first; a refusal from the server is said above the button. */
 export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (id: string) => void }) {
   const [members, setMembers] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<{ members?: string; form?: string }>({});
+  const picker = useRef<HTMLFieldSetElement>(null);
   const picked = members.map((id) => bots.find((b) => b.id === id)!);
   return (
     <Empty className="justify-start pt-12 md:pt-20">
       <EmptyHeader className="gap-1.5">
-        <EmptyTitle className="text-2xl font-semibold">New group</EmptyTitle>
-        <EmptyDescription className="text-base">Put a few bots in one room to work on something together. Each keeps what it learned after you disband it.</EmptyDescription>
+        <EmptyTitle>New group</EmptyTitle>
+        <EmptyDescription>Put a few bots in one room to work on something together. Each keeps what it learned after you disband it.</EmptyDescription>
       </EmptyHeader>
       <EmptyContent className="max-w-sm">
         <form
-          className="flex w-full flex-col gap-6 text-left"
+          noValidate
+          className="w-full text-left"
           onSubmit={(e) => {
             e.preventDefault();
+            if (members.length < 2) return setProblem({ members: "Pick at least two bots." }), picker.current!.querySelector("button")!.focus();
             setBusy(true);
-            createGroup({ data: { title: title.trim(), botIds: members } }).then(({ id }) => onCreated(id), fail("create group")).finally(() => setBusy(false));
+            setProblem({});
+            createGroup({ data: { title: title.trim(), botIds: members } }).then(({ id }) => onCreated(id), (e: Error) => (setProblem({ form: `Couldn't start the group: ${e.message}` }), setBusy(false)));
           }}
         >
-          <div className="flex flex-col gap-2">
-            <Label id="group-members" className="text-muted-foreground text-xs font-medium">
-              Bots
-            </Label>
-            <ToggleGroup type="multiple" variant="outline" value={members} onValueChange={setMembers} aria-labelledby="group-members" spacing={2} className="w-full flex-wrap justify-start">
-              {bots.map((b) => (
-                <ToggleGroupItem key={b.id} value={b.id} className="data-[state=on]:border-foreground data-[state=on]:bg-foreground data-[state=on]:text-background data-[state=on]:hover:bg-foreground/90 data-[state=on]:hover:text-background h-8 gap-1.5 rounded-full pr-3 pl-1.5 text-sm font-normal">
-                  <BotAvatar bot={b} size="sm" className="rounded-full" />
-                  {b.name}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="group-title" className="text-muted-foreground text-xs font-medium">
-              Name
-            </Label>
-            <Input id="group-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={picked.length ? picked.map((b) => b.name).join(", ") : "Launch research"} maxLength={60} />
-          </div>
-          <Button type="submit" disabled={members.length < 2 || busy} className="self-start">
-            {busy ? "Starting…" : members.length < 2 ? "Pick at least two bots" : "Start group"}
-          </Button>
+          <FieldGroup>
+            <FieldSet ref={picker} data-invalid={problem.members ? true : undefined} aria-describedby={problem.members ? "group-members-error" : undefined} className="gap-0">
+              <FieldLegend variant="label">Bots</FieldLegend>
+              <ToggleGroup type="multiple" variant="outline" value={members} onValueChange={(v) => (setMembers(v), setProblem({}))} spacing={2} className="w-full flex-wrap justify-start">
+                {bots.map((b) => (
+                  <ToggleGroupItem key={b.id} value={b.id} className="gap-1.5 pr-3 pl-1.5 font-normal">
+                    <BotAvatar bot={b} size="sm" className="rounded-full" />
+                    {b.name}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+              <FieldError id="group-members-error" className="pt-2">
+                {problem.members}
+              </FieldError>
+            </FieldSet>
+            <Field>
+              <FieldLabel htmlFor="group-title">Name</FieldLabel>
+              <Input id="group-title" value={title} onChange={(e) => setTitle(e.target.value)} aria-describedby="group-title-hint" placeholder={picked.length ? picked.map((b) => b.name).join(", ") : "Launch research"} maxLength={60} />
+              <FieldDescription id="group-title-hint">Leave it empty to name the group after its bots.</FieldDescription>
+            </Field>
+            <FieldError>{problem.form}</FieldError>
+            <Button type="submit" disabled={busy} className="self-start">
+              {busy ? "Starting…" : "Start group"}
+            </Button>
+          </FieldGroup>
         </form>
       </EmptyContent>
     </Empty>
@@ -161,29 +172,33 @@ export function GroupPanel({ group, bots, onDisbanded }: { group: GroupSummary; 
         <span className="max-w-full truncate text-lg font-semibold">{group.title}</span>
         <span className="text-muted-foreground text-sm">{members.length === 1 ? "1 bot" : `${members.length} bots`}</span>
       </div>
-      <section aria-labelledby="group-members-title" className="flex flex-col gap-1">
-        <h3 id="group-members-title" className="text-muted-foreground px-2 text-xs font-medium">
+      <section aria-labelledby="group-members-title" className="flex flex-col gap-2">
+        <h3 id="group-members-title" className="text-muted-foreground text-xs font-medium">
           Members
         </h3>
-        <ul className="flex flex-col">
+        <ItemGroup className="-mx-2">
           {members.map((b) => (
             <li key={b.id}>
-              <Button variant="ghost" size="sm" className="w-full justify-start text-sm font-normal" asChild>
+              <Item asChild size="sm">
                 <Link to="/" search={{ bot: b.id }}>
-                  <BotAvatar bot={b} size="sm" className="rounded-full" />
-                  <span className="truncate">{b.name}</span>
+                  <ItemMedia>
+                    <BotAvatar bot={b} size="sm" className="rounded-full" />
+                  </ItemMedia>
+                  <ItemContent>
+                    <ItemTitle>{b.name}</ItemTitle>
+                  </ItemContent>
                 </Link>
-              </Button>
+              </Item>
             </li>
           ))}
-        </ul>
+        </ItemGroup>
       </section>
       <div className="mt-auto flex flex-col gap-2">
         <p className="text-muted-foreground text-sm">Disbanding deletes this room. Each bot keeps what it saw here in its own memory.</p>
         {confirming ? (
           <InlineConfirm question={`Disband ${group.title}?`} action="Disband" onCancel={() => setConfirming(false)} onConfirm={() => disbandGroup({ data: group.id }).then(onDisbanded, fail("disband group"))} />
         ) : (
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive w-fit px-2 text-sm font-normal" onClick={() => setConfirming(true)}>
+          <Button variant="ghost" size="sm" className={QUIET} onClick={() => setConfirming(true)}>
             Disband group
           </Button>
         )}

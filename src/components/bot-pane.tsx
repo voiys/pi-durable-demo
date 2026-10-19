@@ -24,6 +24,7 @@ import {
   useMessageScroller,
   useMessageScrollerScrollable,
 } from "@/components/ui/message-scroller";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Trace } from "@/components/ui/trace";
 import type { PiMessagePart } from "@/pi/transcript";
 import { usePiSession } from "@/pi/use-pi-session";
@@ -50,7 +51,7 @@ export function HeaderBar({ face, name, detailsOpen, onToggleDetails, back }: { 
         type="button"
         aria-expanded={detailsOpen}
         onClick={onToggleDetails}
-        className="hover:bg-accent focus-visible:ring-ring/50 flex max-w-[50%] min-w-0 flex-col items-center gap-0.5 rounded-lg px-2 py-0.5 transition-colors duration-150 outline-none focus-visible:ring-3"
+        className="hover:bg-accent flex max-w-[50%] min-w-0 flex-col items-center gap-0.5 rounded-lg px-2 py-0.5 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2"
       >
         {face}
         <span className="max-w-full truncate text-sm font-medium">
@@ -84,7 +85,7 @@ export function TimeDivider({ id, ts }: { id: string; ts: number }) {
   return (
     <MessageScrollerItem messageId={id} className="pt-6 pb-3 first:pt-2">
       <Marker className="justify-center">
-        <MarkerContent className="text-xs font-medium tabular-nums">{dayTime(ts)}</MarkerContent>
+        <MarkerContent>{dayTime(ts)}</MarkerContent>
       </Marker>
     </MessageScrollerItem>
   );
@@ -109,10 +110,10 @@ export function ThreadRow({ mine = false, sender, first, last, highlight = false
   return (
     // A background, not a ring: MessageScrollerItem's content-visibility clips anything drawn outside it.
     <Message align={mine ? "end" : "start"} className={cn("rounded-xl transition-colors duration-150", highlight && "bg-highlight")}>
-      {sender && <MessageAvatar className="min-w-7 bg-transparent">{last ? <Face sender={sender} className="size-7 text-xs" /> : <span className="size-7" />}</MessageAvatar>}
-      <MessageContent className="gap-0.5">
+      {sender && <MessageAvatar>{last ? <Face sender={sender} className="size-7 text-xs" /> : <span className="size-7" />}</MessageAvatar>}
+      <MessageContent>
         {sender && first && (
-          <MessageHeader className="px-3.5 pb-0.5 text-xs font-medium">
+          <MessageHeader>
             {sender.to ? (
               <Link to="/" search={sender.to} className="hover:text-foreground truncate transition-colors">
                 {sender.name}
@@ -132,8 +133,8 @@ export function ThreadRow({ mine = false, sender, first, last, highlight = false
  * corner in, as iMessage's tail does. */
 export function Said({ mine = false, tail, error = false, children }: { mine?: boolean; tail: boolean; error?: boolean; children: ReactNode }) {
   return (
-    <Bubble align={mine ? "end" : "start"} variant={error ? "destructive" : mine ? "default" : "muted"} role={error ? "alert" : undefined} className="max-w-[min(85%,520px)] sm:max-w-[min(75%,520px)]">
-      <BubbleContent className={cn("rounded-xl px-3.5 py-2.5 text-base", mine && "whitespace-pre-wrap", tail && (mine ? "rounded-br-sm" : "rounded-bl-sm"))}>{children}</BubbleContent>
+    <Bubble align={mine ? "end" : "start"} variant={error ? "destructive" : mine ? "default" : "muted"} role={error ? "alert" : undefined}>
+      <BubbleContent className={cn(mine && "whitespace-pre-wrap", tail && (mine ? "rounded-br-sm" : "rounded-bl-sm"))}>{children}</BubbleContent>
     </Bubble>
   );
 }
@@ -165,19 +166,32 @@ export function ThreadEmpty({ face, title, description, suggestions = [], onPick
       <Empty className="gap-5 px-2">
         <EmptyHeader className="gap-1.5">
           <EmptyMedia className="mb-2">{face}</EmptyMedia>
-          <EmptyTitle className="max-w-full truncate text-2xl font-semibold">{title}</EmptyTitle>
-          <EmptyDescription className="line-clamp-3 text-base">{description}</EmptyDescription>
+          <EmptyTitle className="max-w-full truncate">{title}</EmptyTitle>
+          <EmptyDescription className="line-clamp-3">{description}</EmptyDescription>
         </EmptyHeader>
         {suggestions.length > 0 && (
           <EmptyContent className="flex-row flex-wrap justify-center gap-2">
             {suggestions.map((s) => (
-              <Button key={s} variant="secondary" size="sm" className="h-auto min-h-8 rounded-full px-3.5 py-1.5 text-sm font-normal whitespace-normal" onClick={() => onPick!(s)}>
+              <Button key={s} variant="secondary" size="sm" className="h-auto min-h-8 rounded-full px-3.5 py-1.5 font-normal whitespace-normal" onClick={() => onPick!(s)}>
                 {s}
               </Button>
             ))}
           </EmptyContent>
         )}
       </Empty>
+    </MessageScrollerItem>
+  );
+}
+
+/** A thread on its way (the connection opening, nothing on screen yet): a few bubbles' shapes, theirs left and yours
+ * right, at the bubble radius. */
+export function ThreadSkeleton() {
+  return (
+    <MessageScrollerItem messageId="loading" role="status" className="flex flex-col gap-3 pt-3">
+      <span className="sr-only">Opening the conversation…</span>
+      {["self-end w-40", "w-64", "w-48", "self-end w-56"].map((c) => (
+        <Skeleton key={c} aria-hidden className={cn("h-10 max-w-[75%] rounded-xl", c)} />
+      ))}
     </MessageScrollerItem>
   );
 }
@@ -199,7 +213,7 @@ export function Thread({ busy = false, children }: { busy?: boolean; children: R
             {children}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        <MessageScrollerButton variant="ghost" className="shadow-float rounded-full" />
+        <MessageScrollerButton />
       </MessageScroller>
     </MessageScrollerProvider>
   );
@@ -225,7 +239,7 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
       }}
     >
       {/* 22px is the pill at the 44px one-line height; it stays that radius as the draft grows. */}
-      <InputGroup className="bg-background shadow-composer min-h-11 items-end rounded-[22px] border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/20">
+      <InputGroup className="bg-background shadow-composer min-h-11 items-end rounded-[22px] border-transparent">
         {tools && (
           <InputGroupAddon align="inline-start" className="py-2.5 pl-2 has-[>button]:ml-0 [&>button]:size-6 [&>button]:rounded-full">
             {tools}
@@ -248,11 +262,11 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
         />
         <InputGroupAddon align="inline-end" className="py-2 pr-2 has-[>button]:mr-0">
           {onStop && !typed ? (
-            <InputGroupButton type="button" variant="secondary" size="icon-xs" className="bg-muted hover:bg-muted size-7 rounded-full" aria-label="Stop" onClick={onStop}>
+            <InputGroupButton type="button" variant="secondary" size="icon-sm" className="rounded-full" aria-label="Stop" onClick={onStop}>
               <Square className="size-2.5 fill-current" />
             </InputGroupButton>
           ) : (
-            <InputGroupButton type="submit" variant="default" size="icon-xs" className="disabled:bg-muted disabled:text-faint size-7 rounded-full disabled:opacity-100" aria-label="Send" disabled={!ready || !typed}>
+            <InputGroupButton type="submit" variant="default" size="icon-sm" className="disabled:bg-muted disabled:text-faint rounded-full disabled:opacity-100" aria-label="Send" disabled={!ready || !typed}>
               <ArrowUp className="size-4" strokeWidth={2.5} />
             </InputGroupButton>
           )}
@@ -394,6 +408,7 @@ export function BotPane({ userId, bot, session: sessionId, entry, bots }: { user
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Thread busy={session.running}>
+        {turns.length === 0 && session.status !== "open" && <ThreadSkeleton />}
         {turns.length === 0 && session.status === "open" && !session.running && (
           <ThreadEmpty
             face={<Face sender={sessionId ? { name } : bot} className="size-14 text-2xl" />}

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { InputGroupButton } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { StepSlider } from "@/components/step-slider";
 import { cn, fail } from "@/lib/utils";
@@ -26,10 +27,13 @@ const levelName = (level: string) => {
  * `onChange` applies the choice to the bot. */
 export function ModelPicker({ model, thinkingLevel, onChange }: { model: string | null; thinkingLevel: string | null; onChange: (model: string, thinkingLevel: string) => Promise<unknown> }) {
   const [options, setOptions] = useState<ModelOption[] | "failed" | undefined>(cached);
-  useEffect(() => {
+  // Loads on mount; after a failure, opening the picker again tries again.
+  const load = () => {
+    if (!loading) setOptions(undefined);
     loading ??= modelOptions().then((list) => (cached = list));
     loading.then(setOptions, (e: Error) => ((loading = undefined), setOptions("failed"), fail("load models")(e)));
-  }, []);
+  };
+  useEffect(load, []);
   const list = Array.isArray(options) ? options : [];
   const current = list.find((o) => o.id === model);
   const levels = current?.levels ?? [];
@@ -37,7 +41,7 @@ export function ModelPicker({ model, thinkingLevel, onChange }: { model: string 
   const change = (next: string, level: string) => onChange(next, level).catch(fail("change model"));
 
   return (
-    <Popover>
+    <Popover onOpenChange={(open) => open && options === "failed" && load()}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -46,19 +50,25 @@ export function ModelPicker({ model, thinkingLevel, onChange }: { model: string 
             </InputGroupButton>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent className="text-sm">{label}</TooltipContent>
+        <TooltipContent>{label}</TooltipContent>
       </Tooltip>
-      <PopoverContent align="start" side="top" sideOffset={8} className="shadow-float w-64 rounded-lg border-0 p-0">
-        <Command className="rounded-lg bg-transparent">
+      <PopoverContent align="start" side="top" sideOffset={8} className="w-64 p-0">
+        <Command>
           <CommandList>
-            <CommandGroup heading="Model" className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium">
-              {options === undefined && <p className="text-muted-foreground px-2 py-1.5 text-sm">Loading models…</p>}
-              {options === "failed" && <p className="text-muted-foreground px-2 py-1.5 text-sm">Couldn't load the models on your plan.</p>}
+            <CommandGroup heading="Model">
+              {options === undefined && (
+                <div role="status" className="flex flex-col gap-1 p-1">
+                  <span className="sr-only">Loading the models on your plan…</span>
+                  {["w-28", "w-24", "w-20"].map((w) => (
+                    <Skeleton key={w} aria-hidden className={cn("my-1.5 h-4", w)} />
+                  ))}
+                </div>
+              )}
+              {options === "failed" && <p role="alert" className="text-muted-foreground px-2 py-1.5 text-sm">Couldn't load the models on your plan. Close this and open it again to retry.</p>}
               {list.map((o) => (
                 <CommandItem
                   key={o.id}
                   value={o.id}
-                  className="text-sm"
                   // Keep the effort when the new model supports it, else take the new model's lowest level.
                   onSelect={() => change(o.id, o.levels.find((l) => l === thinkingLevel) ?? o.levels[0])}
                 >
