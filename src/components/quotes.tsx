@@ -5,6 +5,7 @@
 import { X } from "lucide-react";
 import { createContext, use, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { InlineMarkdown } from "@/components/ai/inline-markdown";
 import { cn } from "@/lib/utils";
 import { parseReply, replyText } from "@/shared";
 
@@ -67,13 +68,15 @@ export function parseQuotes(text: string): { quotes: { sender?: string; text: st
   return { quotes: quotes.map((q) => ({ ...q, text: q.text.trim() })), body: reply.reply };
 }
 
-/** A quote at the top of a bubble: a rule, the sender, two lines of their words. Ink stays the bubble's own (white on
+/** A quote at the top of a bubble: a rule, the sender, two lines of their words (inline markdown). Ink stays the bubble's own (white on
  * blue keeps 4.7:1); size and the rule make it secondary. */
 export function QuoteBlock({ sender, text }: { sender?: string; text: string }) {
   return (
     <span className="mb-1.5 block border-l-2 border-current/50 pl-2 text-sm whitespace-normal">
       {sender && <span className="block text-xs font-medium">{sender}</span>}
-      <span className="line-clamp-2">{text}</span>
+      <span className="line-clamp-2">
+        <InlineMarkdown text={text} />
+      </span>
     </span>
   );
 }

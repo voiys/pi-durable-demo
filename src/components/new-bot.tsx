@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
 import { LookPicker } from "@/components/look-picker";
+import { CARD } from "@/components/panel";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -71,7 +72,7 @@ export function NewBot({ botCount, onCreated }: { botCount: number; onCreated: (
                 <span>Look</span>
               </FieldLabel>
               <div role="group" aria-labelledby="bot-look">
-                <LookPicker look={look} onChange={(patch) => setLook({ ...look, ...patch })} />
+                <LookPicker look={look} onChange={(patch) => setLook({ ...look, ...patch })} className={CARD} />
               </div>
               <FieldDescription id="bot-instructions-hint">You can change all of this later in its details.</FieldDescription>
             </Field>

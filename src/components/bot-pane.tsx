@@ -173,10 +173,11 @@ export function YourSaid({ text, run, replied, id }: { text: string; run: Run; r
 function Typing({ run }: { run: Run }) {
   return (
     <Bubble variant="muted" role="status">
-      <BubbleContent className={cn("flex h-lh box-content items-center gap-1", runCorners(false, run))}>
+      {/* A compact pill (34px), smaller than a line of text, as in Messages: it stands for a message, it isn't one. */}
+      <BubbleContent className={cn("flex h-2 box-content items-center gap-1 px-3 py-3", runCorners(false, run))}>
         <span className="sr-only">Typing…</span>
         {["", "[animation-delay:150ms]", "[animation-delay:300ms]"].map((delay) => (
-          <span key={delay} aria-hidden className={cn("bg-muted-foreground size-2 rounded-full opacity-60 motion-safe:animate-typing", delay)} />
+          <span key={delay} aria-hidden className={cn("bg-muted-foreground size-1.5 rounded-full opacity-60 motion-safe:animate-typing", delay)} />
         ))}
       </BubbleContent>
     </Bubble>

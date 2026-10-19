@@ -1,17 +1,18 @@
 import { COLOR_BY_ID } from "bloub-react";
 import { useId, type ReactNode } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
-import { CAPTION, CARD, LINE } from "@/components/panel";
+import { CAPTION, LINE } from "@/components/panel";
 import { cn } from "@/lib/utils";
 import { LOOK_COLORS, LOOK_EXPRESSIONS, LOOK_SHAPES, type BotLook } from "@/shared";
 
-/** A bot's look, picked in place (DESIGN.md §6 Look): shape, color and face as three rows of one card. Each option is
+/** A bot's look (DESIGN.md §6 Look): shape, color and face as three rows; `className` is their container (a card in the
+ * new-bot form, nothing in the panel's popover, which is the surface itself). Each option is
  * drawn as the look it would give, so you see the result before you pick it. Native radios: arrow keys move within a
  * row, Tab moves between rows. */
-export function LookPicker({ look, onChange }: { look: BotLook; onChange: (patch: Partial<BotLook>) => void }) {
+export function LookPicker({ look, onChange, className }: { look: BotLook; onChange: (patch: Partial<BotLook>) => void; className?: string }) {
   const id = useId();
   return (
-    <div className={cn(CARD, "flex flex-col")}>
+    <div className={cn("flex flex-col", className)}>
       <Choices id={`${id}-shape`} legend="Shape" options={LOOK_SHAPES} value={look.shape} onPick={(shape) => onChange({ shape })} className="grid-cols-8">
         {(shape) => <BotAvatar look={{ ...look, shape }} size={20} still />}
       </Choices>

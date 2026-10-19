@@ -118,7 +118,8 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   letters. `BotAvatar` (`src/components/bot-avatar.tsx`) takes a look and a px size; the eyes are cut out of the body, so
   they show the surface behind on both themes. Helpers (and bots no longer in the catalog) are a plain gray circle.
   Sizes: rail 36, panel 48, empty state and new bot 56, thread sender 28, header 24, rows and lists 20.
-- **Look** (details panel, under the identity; and in the new-bot form): one card, three rows (Shape 8, Color 10, Face
+- **Look** (a popover from the face in the details panel's identity card, panel-wide, start-aligned; inline as a card
+  in the new-bot form): three rows (Shape 8, Color 10, Face
   16) of square tiles, each drawn as the look it would give; the picked tile `--muted`, hover `--accent`. Native radios
   (arrows within a row, Tab between rows); a pick saves at once and every face of that bot moves to it. Ink and cream
   are left out of the colors: each vanishes on one theme. New bots start on the next shape and color in line.
@@ -226,7 +227,7 @@ State swaps use `initial={false}`, and history, panel lists and the rail on load
 |---|---|
 | Your message arrives | opacity 0→1, y 12→0, blur 4→0, 300ms ease-out (`SLIDE_UP`) |
 | Reply, other senders, system caption, time divider, working row | opacity 200ms in, 150ms out (`FADE`) |
-| Reply being written | typing bubble (three dots, gray bubble, each dot breathing opacity .35→1, 1.2s, 150ms apart; still under reduced motion); the finished block replaces it whole with `FADE` |
+| Reply being written | typing bubble (a compact 52×34 gray pill, smaller than a line of text; three 6px dots, each dot breathing opacity .35→1, 1.2s, 150ms apart; still under reduced motion); the finished block replaces it whole with `FADE` |
 | Quote chip, "Quote" over a selection | chip fades in 150ms; the button as a popover (opacity + zoom 0.96→1 + 4px, 150ms) |
 | "Delivered" ↔ "Working…", who is working | words cross-fade in one grid cell (`CrossFade`, `FADE`), so the line never moves |
 | Activity line settles | running line fades out 150ms (popped out of flow) while its outcome fades in 200ms in place |

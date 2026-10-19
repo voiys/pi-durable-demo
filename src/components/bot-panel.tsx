@@ -9,6 +9,7 @@ import { BARE, CARD, CELL, DangerRow, FOCUS_IN, FOOTNOTE, Group, Identity, LINE,
 import { LookPicker } from "@/components/look-picker";
 import { StepSlider } from "@/components/step-slider";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -109,7 +110,19 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
   return (
     <PanelBody>
       <Identity
-        face={<BotAvatar look={bot.look} size={48} />}
+        face={
+          // The face opens its look: shape, color, face, picked on the spot; each pick saves and the face moves to it.
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" aria-label={`Change ${bot.name}'s look`} className="shrink-0 rounded-full transition-transform duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 enabled:active:scale-[0.96]">
+                <BotAvatar look={bot.look} size={48} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" aria-label={`${bot.name}'s look`} className="w-72 overflow-hidden p-0">
+              <LookPicker look={bot.look} onChange={(look) => void updateBot({ data: { botId: bot.id, look } }).catch(fail("change its look"))} />
+            </PopoverContent>
+          </Popover>
+        }
         name={
           <>
             <label htmlFor="bot-panel-name" className="sr-only">
@@ -137,10 +150,6 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
           </>
         }
       />
-
-      <Group title="Look">
-        <LookPicker look={bot.look} onChange={(look) => void updateBot({ data: { botId: bot.id, look } }).catch(fail("change its look"))} />
-      </Group>
 
       <Group title="Instructions" id="bot-panel-instructions-title" aside={<Saved at={instructions.savedAt} />} footer={instructions.error && <FieldError id="bot-panel-instructions-error">{instructions.error}</FieldError>}>
         <div className={CARD}>
