@@ -162,7 +162,6 @@ try {
   const withBot = (id: string): [string, "GET" | "POST", unknown][] => [
     ["updateBot", "POST", { botId: id, name: "pwned", instructions: "pwned" }],
     ["deleteBot", "POST", id],
-    ["setBotModel", "POST", { botId: id, model: "x", thinkingLevel: "low" }],
     ["botDetails", "GET", id],
     ["markSeen", "POST", id],
     ["setMainBot", "POST", id],
@@ -181,7 +180,7 @@ try {
       ...withGroup(group),
       ...withGroup(crypto.randomUUID()),
       ["createGroup", "POST", { title: "pwned", botIds: [victim, victim2], purpose: "pwned" }],
-      ...(who ? [] : ([["createBot", "POST", { name: "pwned", instructions: "" }], ["modelOptions", "GET", undefined], ["connectChatGPT", "POST", undefined], ["disconnectChatGPT", "POST", undefined]] as [string, "GET" | "POST", unknown][])),
+      ...(who ? [] : ([["createBot", "POST", { name: "pwned", instructions: "" }], ["connectChatGPT", "POST", undefined], ["disconnectChatGPT", "POST", undefined]] as [string, "GET" | "POST", unknown][])),
       ["searchMessages", "GET", word ?? "bot"],
     ];
     for (const [name, method, data] of calls) {

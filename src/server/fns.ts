@@ -3,7 +3,6 @@ import { getRequestHeaders } from "@tanstack/react-start/server";
 import { env } from "../env.ts";
 import { botObjectName, type BotDetails } from "../shared.ts";
 import { auth, requireUser } from "./auth.ts";
-import { pickerOptions } from "./models.ts";
 
 const user = async () => env.User.getByName((await requireUser(getRequestHeaders())).id);
 /** The caller's id, after checking `botId` is in the caller's own catalog (403 otherwise). */
@@ -20,8 +19,6 @@ export const disconnectChatGPT = createServerFn({ method: "POST" }).handler(asyn
 export const searchMessages = createServerFn({ method: "GET" })
   .validator((q: string) => q)
   .handler(async ({ data }) => (await (await user()).search(data)).map((h) => ({ ...h })));
-/** The picker's models for the caller's ChatGPT plan; account-level, so it works before a bot exists. */
-export const modelOptions = createServerFn({ method: "GET" }).handler(async () => pickerOptions(await (await user()).availableModels()));
 
 export const createBot = createServerFn({ method: "POST" })
   .validator((d: { name: string; instructions: string }) => d)
@@ -35,9 +32,6 @@ export const setMainBot = createServerFn({ method: "POST" })
 export const deleteBot = createServerFn({ method: "POST" })
   .validator((botId: string) => botId)
   .handler(async ({ data }) => env.User.getByName(await owner(data)).deleteBot(data));
-export const setBotModel = createServerFn({ method: "POST" })
-  .validator((d: { botId: string; model: string; thinkingLevel: string }) => d)
-  .handler(async ({ data }) => (await bot(data.botId)).configureModel(data.model, data.thinkingLevel));
 /** The UI calls this while the bot's conversation is on screen; it clears the rail's unread dot. */
 export const markSeen = createServerFn({ method: "POST" })
   .validator((botId: string) => botId)

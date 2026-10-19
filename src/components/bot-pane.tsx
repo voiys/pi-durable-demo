@@ -6,7 +6,6 @@ import { Activity, savedReports, Working, type ToolContext, type ToolResult } fr
 import { agentSender, isEvent, parseAgentMessage, SystemEvent, type AgentMsg, type Sender } from "@/components/ai/agents-message";
 import { Markdown } from "@/components/ai/markdown";
 import { BotAvatar } from "@/components/bot-avatar";
-import { ModelPicker } from "@/components/model-picker";
 import { Attachment, AttachmentContent, AttachmentDescription, AttachmentTitle, AttachmentTrigger } from "@/components/ui/attachment";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
@@ -31,7 +30,6 @@ import { toTurns, type PiTurn } from "@/pi/view";
 import { CrossFade, FADE, ICON, RISE, SETTLE, SettleEmpty, SLIDE_UP, useCalm } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { compose, parseQuotes, QuoteBlock, QuoteChips, QuoteProvider, Replyable, useQuotes, type Quote } from "@/components/quotes";
-import { setBotModel } from "@/server/fns";
 import { answerText, botObjectName, parseAnswer, type BotSummary } from "@/shared";
 
 // ---- Shared thread pieces (the group thread is built from the same ones, src/components/group-pane.tsx) ----
@@ -267,7 +265,7 @@ export function Thread({ busy = false, children }: { busy?: boolean; children: R
  * blue send circle on the right that wakes up with text, a stop square while the bot works and nothing is typed. Send
  * and stop are one button, so its fill changes color (150ms) and its icon cross-fades (better-ui icon-transitions).
  * `onStop` is set while there is work to stop. Enter sends (queued behind running work), Shift+Enter is a new line. */
-export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend: (text: string, replyTo?: string) => void; ready: boolean; onStop?: () => void; placeholder: string; tools?: ReactNode }) {
+export function Composer({ onSend, ready, onStop, placeholder }: { onSend: (text: string, replyTo?: string) => void; ready: boolean; onStop?: () => void; placeholder: string }) {
   const [draft, setDraft] = useState("");
   const { quotes, clear, input } = useQuotes();
   const typed = draft.trim() !== "";
@@ -294,11 +292,6 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
         <div className="order-first w-full px-4 pt-2 empty:hidden">
           <QuoteChips />
         </div>
-        {tools && (
-          <InputGroupAddon align="inline-start" className="py-2.5 pl-2 has-[>button]:ml-0 [&>button]:size-6 [&>button]:rounded-full">
-            {tools}
-          </InputGroupAddon>
-        )}
         <InputGroupTextarea
           ref={input}
           value={draft}
@@ -306,7 +299,7 @@ export function Composer({ onSend, ready, onStop, placeholder, tools }: { onSend
           rows={1}
           placeholder={placeholder}
           aria-label="Message"
-          className={cn("placeholder:text-faint max-h-48 min-h-0 py-2.5", tools ? "pl-1.5" : "pl-4")}
+          className="placeholder:text-faint max-h-48 min-h-0 py-2.5 pl-4"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -621,15 +614,6 @@ export function BotPane({ userId, bot, session: sessionId, entry, bots }: { user
           ready={session.status === "open"}
           onStop={session.running ? session.abort : undefined}
           placeholder={{ open: `Message ${name}`, connecting: "Connecting…", closed: "Offline, reconnecting…" }[session.status]}
-          tools={
-            !sessionId && (
-              <ModelPicker
-                model={session.model?.modelId ?? null}
-                thinkingLevel={session.thinkingLevel}
-                onChange={(model, thinkingLevel) => setBotModel({ data: { botId: bot.id, model, thinkingLevel } })}
-              />
-            )
-          }
         />
       </div>
     </QuoteProvider>

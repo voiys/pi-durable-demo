@@ -1,4 +1,3 @@
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 // Types and helpers shared by the browser and the Durable Objects (no server imports here).
 
 /** A bot: one endless conversation with its own OptChat memory (DECISIONS.md). `agents` are its subagents. The glance
@@ -39,7 +38,6 @@ export const botColor = (count: number) => BOT_COLORS[count % BOT_COLORS.length]
 export const botObjectName = (userId: string, botId: string) => `${userId}--${botId}`;
 /** What a new bot starts with. */
 export const DEFAULT_MODEL = { id: "gpt-6.1-sol", thinkingLevel: "low" } as const;
-export type ModelOption = { id: string; name: string; levels: ModelThinkingLevel[] };
 
 /** How messages that are not the user's own words start: subagent reports, other agents and bots, routines firing.
  * Memory logs them as "work" and the UI renders them as agent messages. */

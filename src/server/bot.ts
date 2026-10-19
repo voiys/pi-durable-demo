@@ -17,8 +17,8 @@ import { logRows, optchatExtension, settledEnd } from "../optchat/extension.ts";
 import { Memory } from "../optchat/memory.ts";
 import { sqliteStore } from "../optchat/store.ts";
 import { searchPage } from "../optchat/tools.ts";
-import { MODEL, pickerOptions, planModels } from "./models.ts";
-import { DEFAULT_MODEL, VIEW_BUDGETS, type BotDetails, type IndexRow, type MemoryStats, type ModelOption, type Routine } from "../shared.ts";
+import { MODEL, planModels } from "./models.ts";
+import { DEFAULT_MODEL, VIEW_BUDGETS, type BotDetails, type IndexRow, type MemoryStats, type Routine } from "../shared.ts";
 
 /** The summarizer model: cheap, and checked against the plan before each call (fix plan G11). */
 const COMPACTOR = "gpt-6-luna";
@@ -135,6 +135,8 @@ export class Bot extends DurableObject<Env> {
   async onStart() {
     await this.sockets.reattach();
     await this.#watchRuns();
+    // Every bot runs the one model (DECISIONS.md); this also moves bots set to another one back. An equal value writes nothing.
+    await (await this.harness.conversation(ROOT_SESSION)).configure({ model: { provider: MODEL.provider, modelId: MODEL.id }, thinkingLevel: DEFAULT_MODEL.thinkingLevel }, BACKGROUND_CONTEXT);
     // A log with pending summaries resumes after eviction (G7).
     if (this.ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'optchat_log'").toArray().length) this.#keepPumping();
   }
@@ -257,22 +259,6 @@ export class Bot extends DurableObject<Env> {
   /** Set by the User DO when the bot is created or edited. */
   setProfile(name: string, instructions: string) {
     this.ctx.storage.kv.put("bot:profile", { name, instructions });
-  }
-
-  // --- model ---
-
-  /** Reasoning models the owner's ChatGPT account can use, with each one's thinking levels. */
-  async modelOptions(): Promise<ModelOption[]> {
-    return pickerOptions(await this.#user().availableModels());
-  }
-
-  async configureModel(id: string, thinkingLevel: string) {
-    const option = (await this.modelOptions()).find((m) => m.id === id);
-    if (!option) throw new Error(`Model ${id} is not available on this ChatGPT plan`);
-    const level = option.levels.find((l) => l === thinkingLevel);
-    if (!level) throw new Error(`${id} has no thinking level "${thinkingLevel}"`);
-    const conversation = await this.harness.conversation(ROOT_SESSION);
-    await conversation.configure({ model: { provider: MODEL.provider, modelId: id }, thinkingLevel: level }, BACKGROUND_CONTEXT);
   }
 
   // --- other bots ---
