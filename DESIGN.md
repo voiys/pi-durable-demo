@@ -131,7 +131,8 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
 - **Glance layer (required):** a working bot's face becomes bloub's thinking dots (still dots under reduced motion);
   unread shows a 8px blue dot top-right. Resting on a face shows its glance card (name + one-line status) after 600ms;
   while a card is open, or within 400ms of one closing, the next face's card swaps in at once with no zoom (the macOS
-  Dock's labels). The open chat's face never shows one, and clicking a face closes its card.
+  Dock's labels). The open chat's face never shows one; pressing a face removes its card at once (no fade) and keeps it
+  away until the pointer leaves.
 - **Switching chats is instant:** each conversation and room opened this session is shown from its last view on the
   first frame (use-pi-session `lastSeen`, group-pane `lastRoom`); the live snapshot replaces it a moment later. A first
   visit waits 300ms before its skeleton fades in, so a fast load never flashes a loader.

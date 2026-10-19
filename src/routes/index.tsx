@@ -52,17 +52,25 @@ const status = (b: Pick<BotSummary, "working" | "unread">) => (b.working ? "Work
  */
 function RailItem({ label, active, unread = false, onClick, face, card, warm }: { label: string; active: boolean; unread?: boolean; onClick: () => void; face: ReactNode; card: Omit<GlanceProps, "face">; warm: Warm }) {
   const [open, setOpen] = useState(false);
-  // The open chat's face forgets its card (a focus or hover open can land just as it becomes active), and requests on it
-  // are dropped, so its card can't surface once another chat is opened.
+  // Whether this card swaps in without its zoom is fixed when it opens: changing an open card's animation restarts it.
+  // (The overrides are `!`: tw-animate's animate-in/out come later in the stylesheet than animate-none, and cn keeps both.)
+  const [instant, setInstant] = useState(false);
+  // Pressing a face dismisses its card until the pointer leaves it (tooltip rule): the press's own focus asks Radix to
+  // open it again while the route is still switching. The open chat's face forgets its card and drops requests, so it
+  // can't surface once another chat is opened.
+  const [pressed, setPressed] = useState(false);
+  const quiet = pressed || active;
   useEffect(() => void (active && setOpen(false)), [active]);
   return (
-    <HoverCard open={open && !active} onOpenChange={(o) => !(o && active) && (setOpen(o), warm.onCard(o))} openDelay={warm.on ? 0 : 600} closeDelay={warm.on ? 0 : 100}>
+    <HoverCard open={open && !quiet} onOpenChange={(o) => !(o && quiet) && (o && setInstant(warm.on), setOpen(o), warm.onCard(o))} openDelay={warm.on ? 0 : 600} closeDelay={warm.on ? 0 : 100}>
       <HoverCardTrigger asChild>
         <motion.button
           {...ARRIVE}
           aria-label={label}
           aria-current={active || undefined}
-          onClick={() => (warm.onCard(false), onClick())}
+          onPointerDown={() => (setPressed(true), setOpen(false), warm.onCard(false))}
+          onPointerLeave={() => setPressed(false)}
+          onClick={onClick}
           // flex: an inline button's line box would push the ring off the avatar's center.
           className="group/rail relative flex shrink-0 rounded-[15px] p-[3px] focus-visible:outline-2 focus-visible:outline-offset-1"
         >
@@ -89,7 +97,7 @@ function RailItem({ label, active, unread = false, onClick, face, card, warm }: 
         </motion.button>
       </HoverCardTrigger>
       {/* The faces' rings are cut in the rail's canvas color; on the card they are cut in its surface instead. */}
-      <HoverCardContent side="right" align="start" className={cn("flex flex-col gap-3 [--canvas:var(--popover)]", warm.on && "animate-none data-[state=closed]:animate-none")}>
+      <HoverCardContent side="right" align="start" className={cn("flex flex-col gap-3 [--canvas:var(--popover)]", instant && "data-[state=open]:animate-none!", (quiet || warm.on) && "data-[state=closed]:animate-none!")}>
         <Glance face={face} name={card.name} line={card.line} about={card.about} />
       </HoverCardContent>
     </HoverCard>
