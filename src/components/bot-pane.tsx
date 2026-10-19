@@ -22,7 +22,6 @@ import {
   MessageScrollerProvider,
   MessageScrollerViewport,
   useMessageScroller,
-  useMessageScrollerScrollable,
 } from "@/components/ui/message-scroller";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Trace } from "@/components/ui/trace";
@@ -247,19 +246,13 @@ export function ThreadSkeleton() {
   );
 }
 
-/** Once the thread scrolls, a hairline under the header separates it from the content beneath (DESIGN.md §6). */
-function ScrolledHairline() {
-  const { start } = useMessageScrollerScrollable();
-  return <div aria-hidden className={cn("bg-border pointer-events-none absolute inset-x-0 top-0 z-10 h-px transition-opacity duration-150", start ? "opacity-100" : "opacity-0")} />;
-}
-
 /** The scrolling thread on the white canvas, 720px wide at most: follows the live edge and jumps back to it. */
 export function Thread({ busy = false, children }: { busy?: boolean; children: ReactNode }) {
   return (
     <MessageScrollerProvider autoScroll>
       <MessageScroller>
-        <ScrolledHairline />
-        <MessageScrollerViewport>
+        {/* No bar under the header (user's call): messages just fade as they pass beneath it. */}
+        <MessageScrollerViewport className="scroll-fade-t">
           <MessageScrollerContent aria-busy={busy} className="mx-auto w-full max-w-[720px] gap-0 px-3 pt-2 pb-6 sm:px-4">
             {children}
           </MessageScrollerContent>

@@ -76,6 +76,15 @@ export class Bot extends DurableObject<Env> {
           hook(GenerationTask, {
             // Log as the run goes, as upstream logs each message on message_end (fix plan G2).
             afterTools: (_assistant, _results, api) => (api.conversationId === ROOT_CONVERSATION_ID ? this.#log("all") : undefined),
+            // In a group, what a bot says before using tools ("checking the limits page…") is posted as its own message
+            // (research/pi-multi-message.md). afterResponse can fire for an attempt that is later retried, so each post
+            // is keyed by the response's timestamp and the room drops repeats.
+            afterResponse: (message, api) => {
+              const group = this.#groupOf(String(api.conversationId));
+              if (!group || message.stopReason !== "toolUse") return;
+              const text = message.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n").trim();
+              if (text && !/^PASS\W*$/i.test(text)) this.ctx.waitUntil(this.#interimToGroup(group, text, `${this.botId}:${message.timestamp}`));
+            },
             // The answer comes from the hook argument: pi commits it right after this hook runs.
             onYield: (answer, api) => {
               const group = this.#groupOf(String(api.conversationId));
@@ -307,7 +316,7 @@ export class Bot extends DurableObject<Env> {
       `${purpose ? `What the group is for:\n${purpose}\n\n` : ""}` +
       `Messages come as "<sender>: <text>"; "> " lines quote the message it replies to. Your final answer is posted to the group as your message, so write it for everyone; ` +
       `mention a bot as @name to hand it something (only mentioned bots hear a bot's message). If you have nothing useful to add, ` +
-      `answer exactly PASS and nothing is posted.${mine ? `\n\nThe user's instructions for you:\n${mine}` : ""}`;
+      `answer exactly PASS and nothing is posted. Before using tools, say in one short line what you're about to do; it is posted to the group right away.${mine ? `\n\nThe user's instructions for you:\n${mine}` : ""}`;
     if (this.ctx.storage.kv.get(`group:instructions:${groupId}`) !== instructions) {
       const conversation = await this.harness.conversation(session);
       await conversation.configure({ extensions: { remove: [this.#optchat, this.#routineTools, this.#fleet, this.#ask] }, instructions }, BACKGROUND_CONTEXT);
@@ -317,6 +326,13 @@ export class Bot extends DurableObject<Env> {
     this.#openMemory().append("work", `[group "${title}"] ${from}: ${text}`, new Date().toISOString());
     this.#keepPumping();
     await this.harness.session(session).submit(`${from}: ${text}`, { whenBusy: "followUp" });
+  }
+
+  async #interimToGroup(groupId: string, text: string, key: string) {
+    const title = this.ctx.storage.kv.get(`group:title:${groupId}`) as string;
+    this.#openMemory().append("work", `[group "${title}"] you (${this.#profile().name}): ${text}`, new Date().toISOString());
+    this.#keepPumping();
+    await this.#group(groupId).botInterim(this.botId, text, key);
   }
 
   async #replyToGroup(groupId: string, answer: AssistantMessage) {

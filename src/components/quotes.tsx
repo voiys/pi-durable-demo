@@ -173,7 +173,7 @@ function SelectionQuote({ onQuote }: { onQuote: (q: Quote) => void }) {
       // Keep the selection while the button is pressed.
       onPointerDown={(e) => e.preventDefault()}
       onClick={() => (onQuote(at.quote), getSelection()!.removeAllRanges(), setAt(undefined))}
-      className="bg-popover text-popover-foreground shadow-float hover:bg-accent animate-in fade-in motion-safe:zoom-in-96 motion-safe:slide-in-from-bottom-1 fixed z-50 h-7 -translate-x-1/2 -translate-y-[calc(100%+6px)] rounded-md px-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-2"
+      className="bg-popover text-popover-foreground shadow-float hover:bg-muted animate-in fade-in motion-safe:zoom-in-96 motion-safe:slide-in-from-bottom-1 fixed z-50 h-7 -translate-x-1/2 -translate-y-[calc(100%+6px)] rounded-md px-2.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-2"
     >
       Quote<span className="sr-only"> {at.quote.sender}</span>
     </button>,

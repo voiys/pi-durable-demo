@@ -63,6 +63,15 @@ export class Group extends Agent<Env, GroupState> {
     this.#deliver(text, "the user", undefined, replied);
   }
 
+  /** A member bot's message while it is still working (what it says before using tools). Posted once per `key`; it
+   * reaches nobody (only the final answer can hand work on) and the bot stays "typing". */
+  botInterim(botId: string, text: string, key: string) {
+    if (!this.state.members.some((m) => m.id === botId)) throw new Error(`${botId} is not in this group`);
+    if (this.ctx.storage.kv.get(`interim:${key}`)) return;
+    this.ctx.storage.kv.put(`interim:${key}`, true);
+    this.#post({ from: botId, text });
+  }
+
   /** A member bot's answer to what it heard (`null` when it had nothing to add). */
   botReply(botId: string, text: string | null) {
     const member = this.state.members.find((m) => m.id === botId);
