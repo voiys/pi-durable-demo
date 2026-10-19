@@ -118,6 +118,8 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   8px gap + hairline. Groups after another hairline as overlapped round faces.
 - **Glance layer (required):** a working bot shows a 2px ring in its own color, softly pulsing (opacity, 1.6s, off under
   reduced motion); unread shows a 8px blue dot top-right. Tooltip = name + one-line status ("Reading 3 pages…").
+  Bots only: groups get no working/unread marker in the rail, since you see who's working inside the room and groups are
+  short-lived (decided 2026-10-19).
 
 ### Thread
 - Pure white canvas. Header: centered avatar (24px) over name (13px/510) — tapping opens details (Messages' contact
@@ -126,8 +128,8 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
   Consecutive bubbles from one sender group: only the last shows the tail-corner (4px radius on the outer bottom corner),
   only the first shows the sender name (groups), avatar only on the last.
 - **Time divider:** caption, centered, `Today 12:11`, shown when 30+ min pass. No lines.
-- **Delivered/read:** under your last bubble, caption gray: "Delivered" → "Read" when the bot starts → "Working…" (live
-  line) → the reply.
+- **Delivered:** under your last bubble, caption gray: "Delivered" → "Working…" (live line) → the reply. No "Read" step:
+  a bot reads instantly, so it would only flash (decided 2026-10-19).
 - **Intent and outcome (tools):** every tool call carries an `intent` the model writes for the user ("Checking
   Cloudflare's official limits page for the row-size cap"). The thread shows intents as editorial lines, never tool
   names, icons, arguments or raw output. While running: the intent with a shimmer. Settled: the intent in muted ink, its
