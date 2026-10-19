@@ -1,5 +1,0 @@
-# pitools verification (2026-10-18)
-All substantive claims re-read in ctx sources (cloudflare-agents-source, pi-source-v1.3.0, codex, optchat repos), SIWC doc re-fetched, pi-ai 1.3.0 tarball catalog parsed.
-Confirmed: ToolRegistration shape (types.ts:293-333), ToolExecutionResult output rename (types.ts:154-170, CHANGELOG 1.2.0), ToolExecutionApi, context.abortSignal (chord context/index.ts:10), tool.ts intent+replay-safe recovery, harness wake/heartbeat/WAIT_BUDGET constants, CF eviction tests, memo first-writer-wins (scheduler.ts:1640-1655), enqueue idempotency, subagent README pattern + examples 22/23, skills.ts still uses content, lockfile pi-durable 1.0.0, SIWC limitation text, pi isChatGPTSignIn + buildParams + resolveTranscriptTools flat top-level initial tools, gpt-6-* catalog flags, Codex responses-lite namespace path, Codex models.json lite flags.
-Nuance: Codex wraps in `functions` namespace only when provider.capabilities().namespace_tools (default true, model-provider/src/provider.rs:60-70); client.rs:909-913.
-Unverifiable: whether SIWC accepts pi flat tools (needs live test).

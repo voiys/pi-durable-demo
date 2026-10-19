@@ -1,14 +1,14 @@
 # Locked UI decisions (the user made these; never override them, even if a shadcn example differs)
 
-- No modals or dialogs anywhere. Confirms, edits and search happen inline in place (InlineConfirm, inline rename input, sidebar search box).
-- Model + reasoning: ONE brain icon button in the composer opening a Popover with the model list and a stepped reasoning slider (StepSlider). Never two dropdowns. Only gpt-6.1-sol / gpt-6-astra / gpt-6-luna.
-- The brain picker also shows on the New chat draft; a chat is created only by its first message.
-- Sidebar: search box at the top filters chats; hits are static text under the chat title (best hit + "+N more"), not hoverable rows. Chat rows: double-click/F2 rename inline, trash appears instantly on hover (only its color transitions), inline delete confirm. Subagent rows run full width to the right edge, retire on hover with inline confirm.
-- Footer: shadcn sidebar-07 nav-user (avatar + email, menu with ChatGPT plan, Manage usage, Disconnect, Log out). Debug section is an inline collapsible above it.
-- Thread: shadcn chat-demo motion (MessageScroller autoScroll, user message is the scroll anchor, slide-up enter for new user messages only, Streamdown animated streaming with caret). History never animates in.
+- No modals or dialogs anywhere. Confirms, edits and search happen inline in place (InlineConfirm, inline rename, the
+  rail's search).
+- No model picker: every bot runs gpt-6.1-sol at low reasoning.
+- Rail: the bots' faces (main bot on top), a hover card per face, search at the top, the account avatar at the bottom
+  (ChatGPT plan, Manage usage, Disconnect, Log out). Faces look at the pointer.
+- Thread: shadcn MessageScroller (user message is the scroll anchor, new user messages slide up, history never animates
+  in). The composer floats over the thread on a transparent background; @ opens a mention list of the room's bots.
 - The page itself never scrolls; only the thread scrolls (no body overscroll).
 - Toasts: title + description, shadow elevation, only the icon is red on errors.
-- See research/ui-acceptance.md for the review criteria that must also hold.
 
 ## 2026-10-19 (user, after the bots rebuild)
 
@@ -21,7 +21,7 @@
 
 ## 2026-10-19 (user, replies + questions)
 
-- Typing then sent replaces streamed replies (supersedes "Streamdown animated streaming with caret" above): a typing
+- Typing then sent replaces streamed replies: a typing
   bubble while a text block is written, then the whole bubble; each text block is its own message.
 - A bot's question (`ask`) is an async card in the thread; clicking an option sends it as your next message and never
   blocks the bot.
@@ -32,8 +32,10 @@
   member bot as part of its instructions.
 
 ## 2026-10-19 — Bot faces are bloubs
-- Letter avatars are gone ("shitty letters that mean nothing"). Every bot is a bloub (bloub-react 1.0.0, MIT) with a
-  look the user picks: shape, color, resting face. Picked first grokbot-web, switched to bloub-react on the user's call.
+- Letter avatars are gone. Every bot is a bloub (bloub-react 1.0.0, MIT) with a
+  look the user picks: shape, color, resting face. Picked over grokbot-web on the user's call.
 - Faces animate on their own (user: "make the faces autoanimate") and move between looks when one changes, morphs for
   shape and face, a cross-fade for color ("transition between updates, even when I pick different config options").
 - A working bot's rail face becomes bloub's thinking dots; the colored working ring is gone.
+- Clicking a bot's face in its panel opens its look (shape, color, face) in a popover.
+- Group bubbles stack like iMessage: in a run of messages from one sender only the outer corners round.

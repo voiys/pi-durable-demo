@@ -20,7 +20,7 @@ import { searchPage } from "../optchat/tools.ts";
 import { MODEL, planModels } from "./models.ts";
 import { DEFAULT_MODEL, VIEW_BUDGETS, type BotDetails, type IndexRow, type MemoryStats, type Routine } from "../shared.ts";
 
-/** The summarizer model: cheap, and checked against the plan before each call (fix plan G11). */
+/** The summarizer model: cheap, and checked against the plan before each call. */
 const COMPACTOR = "gpt-6-luna";
 const say = (text: string) => ({ output: [{ type: "text" as const, text }] });
 
@@ -44,7 +44,7 @@ export class Bot extends DurableObject<Env> {
 
   readonly scheduler = new Scheduler({
     callbacks: {
-      // Keeps summarizing alive across eviction while work is pending (fix plan G7).
+      // Keeps summarizing alive across eviction while work is pending.
       pumpMemory: () => {
         const m = this.#openMemory();
         if (m.pending > 0 || m.active > 0) this.#keepPumping();
@@ -81,7 +81,7 @@ export class Bot extends DurableObject<Env> {
         sections: [{ key: "bot", render: (input) => (input.conversationId === ROOT_CONVERSATION_ID ? this.#profileSection() : undefined), tag: false }],
         hooks: [
           hook(GenerationTask, {
-            // Log as the run goes, as upstream logs each message on message_end (fix plan G2).
+            // Log as the run goes, as upstream logs each message on message_end.
             afterTools: (_assistant, _results, api) => (api.conversationId === ROOT_CONVERSATION_ID ? this.#log("all") : undefined),
             // In a group, what a bot says before using tools ("checking the limits page…") is posted as its own message
             // (research/pi-multi-message.md). afterResponse can fire for an attempt that is later retried, so each post
@@ -351,7 +351,7 @@ export class Bot extends DurableObject<Env> {
 
   #memory: Memory | undefined;
 
-  /** Opened once; a budget change or a reset swaps it out (fix plan G6), so readers never get a closed instance.
+  /** Opened once; a budget change or a reset swaps it out, so readers never get a closed instance.
    * Summarizing runs on the user's plan, so it fails as loudly as a turn would without a ChatGPT connection (G7). */
   #openMemory(): Memory {
     if (this.#memory) return this.#memory;

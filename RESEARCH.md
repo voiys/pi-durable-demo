@@ -1,6 +1,6 @@
-# Research (2026-10-18)
+# Research (2026-10-18/19)
 
-Full notes with file:line citations are in `research/<topic>.md`, and the adversarial fact-check for each topic is in `research/<topic>.verify.md`. ctx labels: `alchemy-v2-beta83`, `cloudflare-agents-main` (agents 0.28.1 @7dd51c5), `pi-source-v1.3.0` (@71023ae), `pi-durable-cloudflare`, `siwc-devkit`, `better-auth-1710-source`, `shadcn-ui-source`, `tanstack-db-0150`, `optchat-durable`, `batty`.
+What we checked before building, with file:line citations into the pinned sources. Full notes are in `research/<topic>.md`. ctx labels: `alchemy-v2-beta83`, `cloudflare-agents-main` (agents 0.28.1 @7dd51c5), `pi-source-v1.3.0` (@71023ae), `pi-durable-cloudflare`, `siwc-devkit`, `better-auth-1710-source`, `shadcn-ui-source`, `tanstack-db-0150`, `optchat-durable`, `batty`.
 
 ## Alchemy local dev (research/stack.md)
 - `alchemy dev` runs Workers and DOs, including DO SQLite, in local workerd, and D1 in a local simulator. Website.Vite runs TanStack Start's own Vite dev server behind a proxy (`website/src/content/docs/cloudflare/local-development.mdx:99-113`, `cloudflare/frontend/tanstack-start.mdx:37-121`).

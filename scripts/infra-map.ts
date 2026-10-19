@@ -131,7 +131,7 @@ const classFile = (cls: string) => worker.match(new RegExp(`export \\{ ${cls} \\
 const alchemy = read("alchemy.run.ts");
 const decl = Object.fromEntries([...alchemy.matchAll(/export const (\w+) = Cloudflare\.([\w.]+)\(/g)].map((m) => [m[1], m[2]]));
 // Docker containers: alchemy resources that are not Worker bindings. SEARXNG_URL must point at the container's published port.
-const containers = [...alchemy.matchAll(/Docker\.Container\("(\w+)", \{[\s\S]*?name: "([^"]+)"[\s\S]*?ports: \[\{ external: (\w+), internal: (\d+) \}\]/g)].map((m) => ({ id: m[1], name: m[2], external: m[3], internal: m[4] }));
+const containers = [...alchemy.matchAll(/Docker\.Container\("(\w+)", \{[\s\S]*?name: "([^"]+)"[\s\S]*?ports: \[\{ external: `127\.0\.0\.1:\$\{(\w+)\}`, internal: (\d+) \}\]/g)].map((m) => ({ id: m[1], name: m[2], external: m[3], internal: m[4] }));
 const images = [...alchemy.matchAll(/Docker\.RemoteImage\("(\w+)", \{ name: "([^"]+)", tag: "([^"]+)"/g)].map((m) => `${m[2]}:${m[3]}`);
 const envBlock = alchemy.match(/env: \{\n([\s\S]*?)\n  \},/)?.[1] ?? assert(false, "alchemy.run.ts has no env block");
 const bindings = [...String(envBlock).matchAll(/^\s+(\w+)(?::\s*(.+?))?,$/gm)].map((m) => {

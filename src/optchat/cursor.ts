@@ -1,4 +1,4 @@
-// Which of a bot's entries go into its memory, decided once per entry (fix plan G3). Entry ids are
+// Which of a bot's entries go into its memory, decided once per entry. Entry ids are
 // pi-durable's monotonic ids, so the cursor survives a context reset that shrinks the visible transcript. An answer is
 // logged from the generation hook before pi commits it (G2); `answerTs` remembers it so its committed entry is skipped.
 import type { LogRow } from "./extension.ts";

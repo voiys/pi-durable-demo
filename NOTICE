@@ -1,0 +1,8 @@
+This project includes code from the projects below, each under the MIT License
+(the same text as LICENSE, with the copyright line shown here).
+
+- src/pi/*: copied from cloudflare/agents (examples/next/harnesses/pi, commit 7dd51c5).
+  Copyright (c) 2025 Cloudflare, Inc.
+- src/optchat/*, and tests/optchat/test/* and tests/optchat/src/store.ts (vendored unchanged):
+  adapted from jonaslsaa/pi-optchat (commit aae1caf). Copyright (c) 2026 Jonas Silva
+- src/components/ui/* and .claude/skills/shadcn/*: from shadcn/ui. Copyright (c) 2023 shadcn

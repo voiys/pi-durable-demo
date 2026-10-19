@@ -1,28 +1,66 @@
 # pi durable demo
 
-Local-only demo: email/password accounts, each user connects their ChatGPT plan (Sign in with ChatGPT) and creates bots. A bot is one endless pi-durable conversation in its own Durable Object, with its own OptChat memory, subagents and routines. See PLAN.md, RESEARCH.md, DECISIONS.md, PAPERCUTS.md.
+Bespoke bots that work for you, on your own ChatGPT plan. Make specialists (a researcher, an analyst, a writer), give them schedules, and put them together in group chats that work like projects. Each bot is always on: it lives in its own Cloudflare Durable Object, runs on [pi-durable](https://github.com/earendil-works/pi-durable-cloudflare) (a run that gets cut off resumes where it was), and remembers everything with [OptChat](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449) memory.
 
-## Run
+It runs entirely on your machine. No Cloudflare account, no hosted backend.
 
-You need Docker (for the local search engine), [mise](https://mise.jdx.dev) (or Node 24 and pnpm 12) and a ChatGPT plan. No Cloudflare account: everything runs locally under workerd. Sign in with ChatGPT lets open-source and locally run apps use your plan; each user connects their own.
+## What works
 
-`mise install && pnpm install && printf "BETTER_AUTH_SECRET=%s\nSEARXNG_SECRET=%s\n" $(openssl rand -hex 32) $(openssl rand -hex 32) > .env && pnpm dev` (Docker running), then open **http://127.0.0.1:1455** (not `localhost`: the ChatGPT callback is pinned to 127.0.0.1).
+- **Accounts and your plan.** Email/password sign-up, then "Continue with ChatGPT" connects your plan (Sign in with ChatGPT). Every bot runs gpt-6.1-sol at low reasoning on it.
+- **Bots.** Each bot is one endless conversation with its own memory, instructions and look (an animated bloub face). The first bot is your main bot: ask it to create, rename, re-instruct or delete the others in plain words.
+- **Memory.** OptChat folds old messages into a tree of summaries, so a bot's chat never ends and never forgets; it can zoom back into detail and search its past.
+- **Research.** Bots search the web through a local SearXNG, read pages, keep tables in their own SQL database and save markdown reports to a library. All of it shows in the bot's details panel.
+- **Routines.** "Every weekday at 7:00, do X": cron schedules per bot that run with the tab closed. Made in a group chat, a routine posts to the group.
+- **Group chats.** A room with a purpose every member reads. Every bot sees the whole room; @mentions decide who answers. Bots hand work to each other, and you can reply to or quote any message.
+- **Bots talk to each other** by name, and spin up subagents for side work.
+- **Search** across every bot's messages, from the rail.
+- **Questions.** A bot can ask you to pick an option mid-task, as a card in the thread.
 
-## Slices
+## Run it
 
-1. Sign up / sign in, "Continue with ChatGPT", New bot (name + instructions), message it, pi streams the reply.
-2. Several bots in the rail, each its own conversation; log out and sign in as another user: their rail is empty and `/agents/*` returns 403 for the other user's objects.
-3. Search (rail) runs FTS5 bm25 over every bot's user + assistant messages in your User DO; a hit opens that bot at the message.
-4. ChatGPT connection in the account menu (Manage usage, Disconnect). Every bot runs on gpt-6.1-sol at low reasoning.
-5. Bot details (click its name): instructions, subagents, routines (ask the bot "every weekday at 8 do X"), memory budget and reset, delete. Bots message each other with the `bots` tool.
-6. Research: bots search the web through a local SearXNG container (started by `pnpm dev` via alchemy; needs Docker), read pages, keep data in their own SQL workspace and save reports to their library (details panel).
-7. Main bot: the first bot (or the one you pick) manages the rest: "make me a bot that…", rename, re-instruct, delete.
-8. Group chats: + → New group, pick bots; every bot sees the room, @mention to pick who answers; a routine made in a group posts there; disband from the group's details.
+You need Docker (for the local search engine), [mise](https://mise.jdx.dev) (or Node 24 and pnpm 12) and a ChatGPT plan. Sign in with ChatGPT lets open-source and locally run apps use your plan; each user connects their own.
+
+```bash
+mise install && pnpm install
+printf "BETTER_AUTH_SECRET=%s\nSEARXNG_SECRET=%s\n" $(openssl rand -hex 32) $(openssl rand -hex 32) > .env
+pnpm dev
+```
+
+Open **http://127.0.0.1:1455** (not `localhost`: the ChatGPT callback is pinned to 127.0.0.1), create an account, connect ChatGPT and make your first bot.
+
+## How it's built
+
+- One Worker (TanStack Start via [alchemy](https://alchemy.run) v2, local workerd) and five Durable Object classes:
+  - **User**: the bot catalog (synced live to the rail), the ChatGPT connection, and an FTS5 search index over every bot.
+  - **Bot**: a pi-durable harness (`agents/harness/pi`) with OptChat memory, subagents, routines (agents SDK `Scheduler`) and the bot's tools.
+  - **BotData**: the bot's own SQLite for its tables and report library, kept apart from pi's tables.
+  - **Group**: one room's transcript, purpose and who has heard what.
+  - D1 holds better-auth's tables.
+- Every `/agents/*` socket and server function checks the session and ownership; `scripts/isolation.ts` attacks it as another user.
+- `ARCHITECTURE.md` maps every table and who owns it (generated from the code and the local SQLite files).
+
+## Docs
+
+- `DECISIONS.md`: what we settled on and why.
+- `PAPERCUTS.md`: limits and shortcuts.
+- `RESEARCH.md` and `research/`: what we checked before building, with citations into the pinned sources.
+- `DESIGN.md` and `research/ui-decisions.md`: the design system and the UI calls.
 
 ## Checks
 
-- `pnpm check:optchat-spec`: our OptChat code (cursor, logging plan, pinned view, previous exchange, caps, work rows for bot/routine/subagent messages, compactor) against research/optchat-fix-plan.md Part 3, with fakes; no network.
-- `pnpm check:optchat-e2e`: live, on the dev server as a@test.dev (ChatGPT connected; ~12 turns of the plan): logging once per entry, previous exchange, per-bot memory (bot Y doesn't know bot X's secret until told via the `bots` tool), compression at a 2K budget, recall after compression. Creates and deletes two bots.
-- `pnpm check:optchat-upstream`: upstream pi-optchat's own memory test suite (vendored unchanged in `tests/optchat/test/`) run against our `src/optchat/memory.ts`; tests for modules we don't port are listed as n/a.
+- `pnpm typecheck`
+- `pnpm check:optchat-spec`: the OptChat code (cursor, logging, view, caps, compactor) against fakes; no network.
+- `pnpm check:optchat-upstream`: upstream pi-optchat's own memory test suite (vendored in `tests/optchat/test/`) against our `src/optchat/memory.ts`.
 
-With `pnpm dev` running: `node scripts/infra-map.ts` (regenerates ARCHITECTURE.md; `--check` only verifies), `node scripts/isolation.ts` (user B vs user A's bots, on a throwaway victim bot), `node scripts/lineage.ts` (traces one tagged message through every local SQLite file and checks deleteBot removes it; one real turn of a@test.dev's plan). Exit 0 = pass.
+With `pnpm dev` running and the test users from `scripts/test-users.json` created in the app (a@test.dev with ChatGPT connected):
+
+- `node scripts/infra-map.ts --check`: ARCHITECTURE.md, ownership rules and the local SQLite agree (drop `--check` to regenerate).
+- `node scripts/isolation.ts`: user B (and an anonymous caller) attack user A through every door.
+- `node scripts/lineage.ts`: one tagged message lands exactly where the design says and is gone after the bot is deleted (one real turn).
+- `pnpm check:optchat-e2e`: per-bot memory end to end, about 12 real turns.
+
+Exit 0 = pass.
+
+## Licence
+
+MIT (LICENSE). Code from cloudflare/agents, pi-optchat and shadcn/ui is credited in NOTICE.

@@ -5,7 +5,6 @@ Path labels (ctx):
 - PI = ctx `pi-source-v1.3.0` = https://github.com/earendil-works/pi/tree/71023aec1546d6d677a65669c5665c0927ce0dd0 (tag v1.3.0)
 - PDC = ctx `pi-durable-cloudflare` = https://github.com/earendil-works/pi-durable-cloudflare/tree/dcb56ce2d174babb3f00112ac5b8cd597e58ab45
 - DK = ctx `siwc-devkit` = https://github.com/openai/sign-in-with-chatgpt-devkit/tree/0a36fefeb913055c8c7a1a29b63d82b96b2e841a
-- RAW = scratchpad/research/raw/pidurable (siwc-*.md, earendil-cf.html.txt, grok1.txt, fx_*.json, agents-0.28.1 tarball in x/, pi-ai-1.3.0 tarball in ai/)
 
 ## 1. Where it lives
 - PiHarness is NOT a separate package. It is the subpath export `agents/harness/pi` of npm `agents` (Cloudflare Agents SDK). AG/packages/agents/package.json exports "./harness/pi"; tarball agents@0.28.1 contains dist/harness/pi/index.js (RAW/x/package/dist/harness/pi).

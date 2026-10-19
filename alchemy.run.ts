@@ -41,7 +41,7 @@ export default Alchemy.Stack(
       name: "pi-durable-searxng",
       image,
       environment: { SEARXNG_SECRET, SEARXNG_BASE_URL: `http://127.0.0.1:${SEARXNG_PORT}/` },
-      ports: [{ external: SEARXNG_PORT, internal: 8080 }],
+      ports: [{ external: `127.0.0.1:${SEARXNG_PORT}`, internal: 8080 }],
       volumes: [{ hostPath: resolve("searxng/settings.yml"), containerPath: "/etc/searxng/settings.yml", readOnly: true }],
       restart: "unless-stopped",
       start: true,

@@ -1,5 +1,4 @@
 # SIWC research (2026-10-18)
-Raw: .../research/raw/siwc/ (md/ = developers.openai.com/siwc/*.md fetched via curl; fx_*.json = api.fxtwitter.com mirrors of X posts; grok1/2.txt = grok leads)
 Devkit pinned: ctx label siwc-devkit, commit 0a36fefeb913055c8c7a1a29b63d82b96b2e841a
 Docs base: https://developers.openai.com/siwc (+ .md twins). /siwc/token-sharing-open-source/ui-ux-guidelines is 404; real one is /siwc/ui-ux-guidelines.md.
 
@@ -13,7 +12,7 @@ Docs base: https://developers.openai.com/siwc (+ .md twins). /siwc/token-sharing
 - Cookbook (cookbook.md:11,199): "At launch, ChatGPT plan usage is available to open-source projects, personal projects that run locally, and selected private apps. Identity-only integration is currently offered to a select group of commercial partners." "available for open-source tools and personal projects that run locally. If you're building a paid or remotely hosted app, join the waitlist" https://openai.com/form/sign-in-with-chatgpt-interest/ . Terms: https://openai.com/policies/ (403 to curl, link only). Devkit licence link.
 - quickstart.md: "Sign in with ChatGPT is currently available to selected commercial partners through a limited trial. ChatGPT plan usage is available to all open-source partners and selected private clients." request-client-id.md: waitlist form for commercial.
 - token-sharing-open-source.md:11: docs "explain ChatGPT plan usage for open-source and locally hosted apps"; paid/remotely hosted -> interest form.
-- Implication: a Cloudflare-Workers-deployed demo is "remotely hosted"; no staff statement permits it (grok2 found none). Locally-run (127.0.0.1) open-source demo is in policy. Multiple app users sharing one ChatGPT account = flagged/unsupported per Tibo; each human connecting THEIR OWN ChatGPT account is the supported shape.
+- Implication: a Cloudflare-Workers-deployed demo is "remotely hosted"; no staff statement permits it. Locally-run (127.0.0.1) open-source demo is in policy. Multiple app users sharing one ChatGPT account = flagged/unsupported per Tibo; each human connecting THEIR OWN ChatGPT account is the supported shape.
 
 ## 2. OAuth contract (sign-in.md, profiles-and-sessions.md, token-reference.md)
 - Discovery https://auth.openai.com/.well-known/openid-configuration; issuer https://auth.openai.com; authorize https://auth.openai.com/api/accounts/authorize; token https://auth.openai.com/api/accounts/oauth/token; JWKS https://auth.openai.com/.well-known/jwks.json (website.md:44-48); revocation_endpoint from discovery (profiles-and-sessions.md:27).

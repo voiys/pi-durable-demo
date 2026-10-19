@@ -15,7 +15,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
 /** Upstream default "summary size tolerance" (src/settings.ts:23 summaryAcceptBytes). */
 const ACCEPT_BYTES = NODE * 1.25;
 
-/** `choice` is async: the User DO checks the model against the plan's list before each call (fix plan G11). */
+/** `choice` is async: the User DO checks the model against the plan's list before each call. */
 export function createCompressor(models: () => Models, choice: () => Promise<{ provider: string; model: string; thinking: ModelThinkingLevel }>, retryDelays: readonly number[] = [1000, 2000]): Compressor {
   return async (input, signal) => {
     const selected = await choice();
@@ -25,7 +25,7 @@ export function createCompressor(models: () => Models, choice: () => Promise<{ p
     const step = `${input.historical ? IMPORT_GUIDANCE + "\n\n" : ""}${compaction(input)}`;
     // OpenAI joins text blocks with nothing between them, so the task starts its own paragraph after the view.
     const messages: Message[] = [{ role: "user", content: [{ type: "text", text: input.context }, { type: "text", text: `\n\n${step}` }], timestamp: Date.now() }];
-    // A hung request must not block a turn in settle forever (fix plan G11).
+    // A hung request must not block a turn in settle forever.
     const ask = () => models().completeSimple(model, { systemPrompt: COMPACT, messages }, { sessionId: "optchat-compactor", reasoning: level === "off" ? undefined : level, signal: AbortSignal.any([signal, AbortSignal.timeout(90_000)]) });
     const answer = async () => {
       for (let retry = 0; ; retry++) {

@@ -44,7 +44,6 @@ const lineBytes = (s: string) => bytes(flat(s));
 const notice = (omitted: number) => `\n[${omitted} characters omitted; head and tail retained]\n`;
 const VIEW_OPEN = '<chat>\n';
 const VIEW_FRAME_BYTES = bytes(`${VIEW_OPEN}</chat>`);
-export const isView = (text: string) => text.startsWith(VIEW_OPEN);
 export function cap(text: string, limit = CAP) {
   if (text.length <= limit) return text;
   const half = Math.floor((limit - notice(text.length).length) / 2);

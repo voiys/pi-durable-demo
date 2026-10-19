@@ -26,7 +26,7 @@ export type MemoryApi = {
   search(text: string, before?: number): Promise<string>;
 };
 
-/** A user/talk row larger than this is cut (head and tail kept): the log lives in DO SQLite rows (fix plan G3). */
+/** A user/talk row larger than this is cut (head and tail kept): the log lives in DO SQLite rows. */
 const ROW_CAP = 200_000;
 
 /** Upstream logMessage: one row per user message, reply text, tool call and tool result. Messages from agents are "work". */
@@ -88,7 +88,7 @@ export function previousExchange(messages: readonly Message[], from: number): Me
   return [];
 }
 
-/** Upstream boundedMessage: a tool result in the live run is capped like its log row; images stay (fix plan G9). */
+/** Upstream boundedMessage: a tool result in the live run is capped like its log row; images stay. */
 const bounded = (m: Message): Message =>
   m.role === "toolResult" ? { ...m, content: m.content.map((c) => (c.type === "text" ? { ...c, text: cap(c.text, CAP) } : c)) } : m;
 
@@ -102,7 +102,7 @@ export function optchatExtension(memory: MemoryApi) {
         beforeRequest: async ({ messages }, api, context) => {
           if (api.conversationId !== ROOT_CONVERSATION_ID) return;
           // One view per run (memos belong to the generation task): retries, tool rounds and recovery see the same view, so
-          // the prompt cache holds and line ids don't move mid-run (fix plan G5).
+          // the prompt cache holds and line ids don't move mid-run.
           let view = await api.memo<string>("optchat:view", context);
           if (view === undefined) {
             await memory.flush("settled");
@@ -122,8 +122,8 @@ export function optchatExtension(memory: MemoryApi) {
           return { messages: [...messages.slice(0, from).filter((m) => m.role === "system"), ...run] };
         },
       }),
-      // OptChat owns the main agent's history; pi's own compaction would summarize and shrink it (upstream index.ts:475-478,
-      // fix plan G4). Subagents keep plain pi context and compaction.
+      // OptChat owns the main agent's history; pi's own compaction would summarize and shrink it (upstream index.ts:475-478).
+      // Subagents keep plain pi context and compaction.
       hook(CompactionTask, { beforeCompact: (_c, api) => (api.conversationId === ROOT_CONVERSATION_ID ? { decline: true } : undefined) }),
     ],
   });

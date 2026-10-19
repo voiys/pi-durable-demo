@@ -1,4 +1,4 @@
-// Executable spec for OUR OptChat code (research/optchat-fix-plan.md Part 3), now one memory per bot, run against the real
+// Executable spec for OUR OptChat code (cursor, logging, view, caps, compactor), one memory per bot, run against the real
 // modules with fakes for the store, the compressor and pi's hook API. No app hooks: everything here is public module API.
 // Run: pnpm check:optchat-spec
 import assert from "node:assert/strict";
