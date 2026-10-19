@@ -289,7 +289,8 @@ export class Bot extends DurableObject<Env> {
   /** A message in one of the user's groups this bot is in: answered in the group's own conversation (created on first
    * use, without memory, routines, fleet or ask tools), and logged to this bot's memory so it remembers the group. The
    * conversation is re-configured whenever its instructions change (new title, purpose or profile). */
-  async receiveGroup(groupId: string, title: string, purpose: string, members: string[], from: string, text: string) {
+  /** A group message addressed to this bot, after `context`: what the room said since this bot last heard from it. */
+  async receiveGroup(groupId: string, title: string, purpose: string, members: string[], context: { from: string; text: string }[], from: string, text: string) {
     let session = this.ctx.storage.kv.get(`group:session:${groupId}`) as string | undefined;
     if (!session) {
       session = (await this.harness.sessions.create()).id;
@@ -300,8 +301,9 @@ export class Bot extends DurableObject<Env> {
     const instructions =
       `You are the bot "${name}" in the group chat "${title}" with the user and the bots ${members.filter((m) => m !== name).join(", ")}. ` +
       `${purpose ? `What the group is for:\n${purpose}\n\n` : ""}` +
-      `Messages come as "<sender>: <text>"; "> " lines quote the message it replies to. Your final answer is posted to the group as your message, so write it for everyone; ` +
-      `mention a bot as @name to hand it something (only mentioned bots hear a bot's message). If you have nothing useful to add, ` +
+      `Everyone in the group sees every message. You are asked to answer one at a time, as "<sender>: <text>" ("> " lines quote the message it replies to); ` +
+      `before it, under "Meanwhile in the room:", comes what was said since you last heard, for context only. Your final answer is posted to the group as your message, so write it for everyone; ` +
+      `mention a bot as @name to hand it something (a mentioned bot is asked to answer). If you have nothing useful to add, ` +
       `answer exactly PASS and nothing is posted. Before using tools, say in one short line what you're about to do; it is posted to the group right away.${mine ? `\n\nThe user's instructions for you:\n${mine}` : ""}`;
     if (this.ctx.storage.kv.get(`group:instructions:${groupId}`) !== instructions) {
       const conversation = await this.harness.conversation(session);
@@ -309,9 +311,11 @@ export class Bot extends DurableObject<Env> {
       this.ctx.storage.kv.put(`group:instructions:${groupId}`, instructions);
     }
     this.ctx.storage.kv.put(`group:title:${groupId}`, title);
-    this.#openMemory().append("work", `[group "${title}"] ${from}: ${text}`, new Date().toISOString());
+    const at = new Date().toISOString();
+    for (const line of [...context, { from, text }]) this.#openMemory().append("work", `[group "${title}"] ${line.from}: ${line.text}`, at);
     this.#keepPumping();
-    await this.harness.session(session).submit(`${from}: ${text}`, { whenBusy: "followUp" });
+    const meanwhile = context.length ? `Meanwhile in the room:\n${context.map((c) => `${c.from}: ${c.text}`).join("\n\n")}\n\n---\n\n` : "";
+    await this.harness.session(session).submit(`${meanwhile}${from}: ${text}`, { whenBusy: "followUp" });
   }
 
   async #interimToGroup(groupId: string, text: string, key: string) {

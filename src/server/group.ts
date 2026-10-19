@@ -10,8 +10,10 @@ const BOT_POSTS_PER_ROUND = 6;
  * The room holds only its transcript (agent state, synced to the browser). Each member bot answers in its own group
  * conversation and remembers what it saw in its own memory (Bot.receiveGroup). RPC only; nothing is `@callable`.
  *
- * Who hears what: the user's message goes to every member, or only to the ones it @-mentions or replies to; a bot's
- * message goes only to the bots it @-mentions, within the round's budget.
+ * Who answers what: the user's message goes to every member, or only to the ones it @-mentions or replies to; a bot's
+ * message goes only to the bots it @-mentions, within the round's budget. Everyone sees the whole room: a delivery
+ * carries what was said since that bot last heard from the room (`heard:<botId>` counts the messages it has had), so an
+ * addressed bot knows what the others posted without being asked to answer each of them.
  */
 export class Group extends Agent<Env, GroupState> {
   initialState: GroupState = { title: "", purpose: "", members: [], messages: [], typing: [] };
@@ -49,8 +51,15 @@ export class Group extends Agent<Env, GroupState> {
     if (replied) text = replyText(`${replied.from ? this.state.members.find((m) => m.id === replied.from)!.name : "the user"} said:\n${replied.text}`, text);
     this.setState({ ...this.state, typing: [...new Set([...this.state.typing, ...audience.map((m) => m.id)])] });
     const groupId = this.name.split("--")[1];
-    for (const m of audience)
-      this.ctx.waitUntil(this.env.Bot.getByName(botObjectName(this.#userId(), m.id)).receiveGroup(groupId, this.state.title, this.state.purpose, this.state.members.map((x) => x.name), sender, text));
+    const { messages } = this.state;
+    const name = (from: string | null) => (from ? this.state.members.find((x) => x.id === from)!.name : "the user");
+    for (const m of audience) {
+      // The message being delivered is the room's last one; what came before it since this bot last heard is context.
+      const since = (this.ctx.storage.kv.get(`heard:${m.id}`) as number | undefined) ?? 0;
+      const context = messages.slice(since, -1).filter((x) => x.from !== m.id).map((x) => ({ from: name(x.from), text: x.text }));
+      this.ctx.storage.kv.put(`heard:${m.id}`, messages.length);
+      this.ctx.waitUntil(this.env.Bot.getByName(botObjectName(this.#userId(), m.id)).receiveGroup(groupId, this.state.title, this.state.purpose, this.state.members.map((x) => x.name), context, sender, text));
+    }
   }
 
   /** The user posts, optionally replying to the room message `replyTo` (a bot's message reaches that bot): a new round. */

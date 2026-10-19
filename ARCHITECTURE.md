@@ -91,12 +91,12 @@ Scope: `user`/`bot`/`group` = per User/Bot/Group instance, `shared` = D1, `agent
 | Bot | `optchat_log` | code: optchat/store.ts:6 | bot | optchat/store.ts:17 | optchat/store.ts:11 | yes |
 | Bot | `optchat_tree` | code: optchat/store.ts:7 | bot | optchat/store.ts:21 | optchat/store.ts:12 | yes |
 | Bot | `optchat_view` | code: optchat/store.ts:8 | bot | optchat/store.ts:25 | optchat/store.ts:13 | yes |
-| Bot | `routines` | code: server/bot.ts:132 | bot | server/bot.ts:441, server/bot.ts:449, server/bot.ts:462, server/bot.ts:469 | server/bot.ts:434, server/bot.ts:454 | yes |
+| Bot | `routines` | code: server/bot.ts:132 | bot | server/bot.ts:445, server/bot.ts:453, server/bot.ts:466, server/bot.ts:473 | server/bot.ts:438, server/bot.ts:458 | yes |
 | Bot | kv `bot:main` | code: server/bot.ts:179 | bot | server/bot.ts:214 | server/bot.ts:179 | n/a |
 | Bot | kv `bot:profile` | code: server/bot.ts:172 | bot | server/bot.ts:261 | server/bot.ts:172 | n/a |
-| Bot | kv `index:sent` | code: server/bot.ts:568 | bot | server/bot.ts:576 | server/bot.ts:568 | n/a |
-| Bot | kv `memory:budget` | code: server/bot.ts:355 | bot | server/bot.ts:413 | server/bot.ts:355 | n/a |
-| Bot | kv `optchat:cursor` | code: server/bot.ts:382 | bot | server/bot.ts:398, server/bot.ts:427 | server/bot.ts:382, server/bot.ts:426 | n/a |
+| Bot | kv `index:sent` | code: server/bot.ts:572 | bot | server/bot.ts:580 | server/bot.ts:572 | n/a |
+| Bot | kv `memory:budget` | code: server/bot.ts:359 | bot | server/bot.ts:417 | server/bot.ts:359 | n/a |
+| Bot | kv `optchat:cursor` | code: server/bot.ts:386 | bot | server/bot.ts:402, server/bot.ts:431 | server/bot.ts:386, server/bot.ts:430 | n/a |
 | Bot | `cf_agents_jobs` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | Bot | `pi_conversations`, `pi_document_revisions`, `pi_documents`, `pi_durable_metadata`, `pi_durable_schema`, `pi_entries`, `pi_record_ids`, `pi_submissions`, `pi_tasks` | library: pi-durable (PiHarness) | bot | pi-durable (PiHarness) | pi-durable (PiHarness) | yes |
 | Bot | `_cf_KV`, `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
@@ -109,24 +109,24 @@ Scope: `user`/`bot`/`group` = per User/Bot/Group instance, `shared` = D1, `agent
 
 | From | To | Method | file:line |
 |---|---|---|---|
-| Bot | BotData | `library` | src/server/bot.ts:538, src/server/bot.ts:550 |
-| Bot | BotData | `report` | src/server/bot.ts:539 |
-| Bot | BotData | `saveReport` | src/server/bot.ts:541 |
-| Bot | BotData | `schema` | src/server/bot.ts:520 |
-| Bot | BotData | `sql` | src/server/bot.ts:522 |
-| Bot | BotData | `tables` | src/server/bot.ts:550 |
+| Bot | BotData | `library` | src/server/bot.ts:542, src/server/bot.ts:554 |
+| Bot | BotData | `report` | src/server/bot.ts:543 |
+| Bot | BotData | `saveReport` | src/server/bot.ts:545 |
+| Bot | BotData | `schema` | src/server/bot.ts:524 |
+| Bot | BotData | `sql` | src/server/bot.ts:526 |
+| Bot | BotData | `tables` | src/server/bot.ts:554 |
 | Bot | Bot | `lastAnswer` | src/server/bot.ts:120 |
 | Bot | Bot | `receive` | src/server/bot.ts:119 |
-| Bot | Group | `botInterim` | src/server/bot.ts:321 |
-| Bot | Group | `botReply` | src/server/bot.ts:332 |
-| Bot | User | `availableModels` | src/server/bot.ts:346 |
-| Bot | User | `credential` | src/server/bot.ts:108, src/server/bot.ts:344 |
-| Bot | User | `indexMessages` | src/server/bot.ts:575 |
+| Bot | Group | `botInterim` | src/server/bot.ts:325 |
+| Bot | Group | `botReply` | src/server/bot.ts:336 |
+| Bot | User | `availableModels` | src/server/bot.ts:350 |
+| Bot | User | `credential` | src/server/bot.ts:108, src/server/bot.ts:348 |
+| Bot | User | `indexMessages` | src/server/bot.ts:579 |
 | Bot | User | `listBots` | src/server/bot.ts:118 |
-| Bot | User | `refreshCredential` | src/server/bot.ts:108, src/server/bot.ts:344 |
+| Bot | User | `refreshCredential` | src/server/bot.ts:108, src/server/bot.ts:348 |
 | Bot | User | `setAgents` | src/server/bot.ts:123 |
 | Bot | User | `setWorking` | src/server/bot.ts:166 |
-| Group | Bot | `receiveGroup` | src/server/group.ts:53 |
+| Group | Bot | `receiveGroup` | src/server/group.ts:61 |
 | Server fns | BotData | `deleteReport` | src/server/fns.ts:51 |
 | Server fns | BotData | `report` | src/server/fns.ts:48 |
 | Server fns | Bot | `deleteRoutine` | src/server/fns.ts:63 |
