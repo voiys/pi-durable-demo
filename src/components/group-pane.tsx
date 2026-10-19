@@ -19,23 +19,23 @@ import { cn, fail } from "@/lib/utils";
 import { createGroup, disbandGroup, postToGroup, updateGroup } from "@/server/fns";
 import { botObjectName, type BotSummary, type GroupState, type GroupSummary } from "@/shared";
 
-/** A few member faces, overlapped: `md` stacks them in a 36px tile for the rail, `sm` and `lg` line them up. `face`
- * restyles each face in a line (its size, and a ring in the color of the surface behind it). */
-export function GroupAvatar({ members, size = "md", face }: { members: Pick<BotSummary, "name" | "color">[]; size?: "sm" | "md" | "lg"; face?: string }) {
+/** A few member faces: `md` sets them in a 36px tile for the rail, `sm` (20px) and `lg` (56px) line them up, `face`
+ * the px size of each in a line. Side by side, not overlapped: bloub shapes aren't round, so a cut ring wouldn't fit. */
+export function GroupAvatar({ members, size = "md", face = { sm: 20, lg: 56 }[size === "md" ? "sm" : size] }: { members: Pick<BotSummary, "look">[]; size?: "sm" | "md" | "lg"; face?: number }) {
   const shown = members.slice(0, 3);
   if (size === "md")
     return (
       // The same 36px rounded square as a bot's face, so every rail item has one shape; the faces sit inside it.
       <span aria-hidden className="bg-muted relative flex size-9 shrink-0 rounded-xl">
         {shown.map((m, i) => (
-          <BotAvatar key={i} bot={m} size="sm" className={cn("ring-muted absolute rounded-full text-[10px] ring-2", ["top-1 left-1 size-5", "right-1 bottom-1 size-5", "top-1 right-1 size-4"][i])} />
+          <BotAvatar key={i} look={m.look} size={i === 2 ? 12 : 16} className={cn("absolute", ["top-1 left-1", "right-1 bottom-1", "top-1 right-1"][i])} />
         ))}
       </span>
     );
   return (
-    <span aria-hidden className={cn("flex", size === "sm" ? "*:not-first:-ml-1.5" : "*:not-first:-ml-3")}>
+    <span aria-hidden className={cn("flex", size === "sm" ? "gap-0.5" : "gap-1.5")}>
       {shown.map((m, i) => (
-        <BotAvatar key={i} bot={m} size="sm" className={cn("ring-background rounded-full ring-2", size === "lg" && "size-14 text-2xl", face)} />
+        <BotAvatar key={i} look={m.look} size={face} />
       ))}
     </span>
   );
@@ -62,7 +62,7 @@ export function GroupPane({ userId, groupId, bots }: { userId: string; groupId: 
     if (!bot) throw new Error(`Group member ${id} is not one of the user's bots`);
     return bot;
   };
-  const sender = (id: string): Sender => ({ key: id, name: member(id).name, color: member(id).color, to: { bot: id } });
+  const sender = (id: string): Sender => ({ key: id, name: member(id).name, look: member(id).look, to: { bot: id } });
   const messages = state?.messages ?? [];
   const typing = state ? names(state.typing.map((id) => sender(id).name)) : "";
   const working = typing && `${typing} ${state!.typing.length === 1 ? "is" : "are"} working…`;
@@ -162,7 +162,7 @@ export function NewGroup({ bots, onCreated }: { bots: BotSummary[]; onCreated: (
               <ToggleGroup type="multiple" variant="outline" value={members} onValueChange={(v) => (setMembers(v), setProblem({}))} spacing={2} className="w-full flex-wrap justify-start">
                 {bots.map((b) => (
                   <ToggleGroupItem key={b.id} value={b.id} className="gap-1.5 pr-3 pl-1.5 font-normal">
-                    <BotAvatar bot={b} size="sm" className="rounded-full" />
+                    <BotAvatar look={b.look} size={20} />
                     {b.name}
                   </ToggleGroupItem>
                 ))}
@@ -228,7 +228,7 @@ export function GroupPanel({ userId, group, bots, onDisbanded }: { userId: strin
   return (
     <PanelBody>
       <Identity
-        face={<GroupAvatar members={members} size="lg" face="ring-surface size-9 text-base" />}
+        face={<GroupAvatar members={members} size="lg" face={28} />}
         name={
           <>
             <label htmlFor="group-panel-title" className="sr-only">
@@ -269,7 +269,7 @@ export function GroupPanel({ userId, group, bots, onDisbanded }: { userId: strin
           {members.map((b) => (
             <li key={b.id} className={cn(LINE, "not-first:before:left-11")}>
               <Link to="/" search={{ bot: b.id }} className={cn(CELL, TAP)}>
-                <BotAvatar bot={b} size="sm" className="rounded-full" />
+                <BotAvatar look={b.look} size={20} />
                 <span className="min-w-0 break-words">{b.name}</span>
               </Link>
             </li>

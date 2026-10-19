@@ -138,15 +138,9 @@
     --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* Motion (DESIGN.md §7). One easing family: every `transition-*` utility without its own easing eases out. The rail's
-   working ring is a slow opacity breath (a loop, not a state change, so keyframes are right), used as
-   `motion-safe:animate-ring-pulse`, so reduced motion keeps the ring, steady. */
+/* Motion (DESIGN.md §7). One easing family: every `transition-*` utility without its own easing eases out. */
 @theme {
     --default-transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
-    --animate-ring-pulse: ring-pulse 1.6s ease-in-out infinite;
-    @keyframes ring-pulse {
-        50% { opacity: 0.4; }
-    }
     /* The typing dots: each breathes in turn (delays on the dots), `motion-safe:` only, so reduced motion keeps them still. */
     --animate-typing: typing 1.2s ease-in-out infinite;
     @keyframes typing {

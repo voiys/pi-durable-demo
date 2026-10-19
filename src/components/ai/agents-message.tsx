@@ -3,7 +3,8 @@ import { Markdown } from "@/components/ai/markdown";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Marker, MarkerContent } from "@/components/ui/marker";
 import { cn } from "@/lib/utils";
-import type { BotSummary } from "@/shared";
+import { PLAIN_LOOK } from "@/components/bot-avatar";
+import type { BotLook, BotSummary } from "@/shared";
 
 /** A message that is not the user's own words: user-role text the harness prefixes with where it came from
  * (src/server/agents.ts, bot.ts). */
@@ -26,18 +27,18 @@ export function parseAgentMessage(text: string): AgentMsg | undefined {
   }
 }
 
-/** Someone speaking in a thread besides the user: a bot (its color is its face) or a helper (a gray face), and where its
+/** Someone speaking in a thread besides the user: a bot (its look is its face) or a helper (a plain gray one), and where its
  * own conversation is. `key` groups consecutive messages from them. */
-export type Sender = { key: string; name: string; color?: string; to?: { bot: string; agent?: string } };
+export type Sender = { key: string; name: string; look: BotLook; to?: { bot: string; agent?: string } };
 
 /** Another bot or a helper talking in this bot's thread, as a group-chat sender. Events are not senders. */
 export function agentSender(msg: AgentMsg, bot: BotSummary, bots: BotSummary[]): Sender {
   if (msg.kind === "bot") {
     const sender = bots.find((b) => b.name.toLowerCase() === msg.from.toLowerCase());
-    return { key: `bot:${msg.from.toLowerCase()}`, name: sender?.name ?? msg.from, color: sender?.color, to: sender && { bot: sender.id } };
+    return { key: `bot:${msg.from.toLowerCase()}`, name: sender?.name ?? msg.from, look: sender?.look ?? PLAIN_LOOK, to: sender && { bot: sender.id } };
   }
   const helper = bot.agents.find((a) => a.name === msg.from);
-  return { key: `helper:${msg.from}`, name: msg.from, to: helper && { bot: bot.id, agent: helper.session } };
+  return { key: `helper:${msg.from}`, name: msg.from, look: PLAIN_LOOK, to: helper && { bot: bot.id, agent: helper.session } };
 }
 
 /** True for what happens in the thread rather than someone saying it: a helper reporting back or failing, a routine firing. */

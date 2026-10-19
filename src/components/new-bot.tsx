@@ -1,20 +1,22 @@
 import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import { BotAvatar } from "@/components/bot-avatar";
+import { LookPicker } from "@/components/look-picker";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SETTLE, SLIDE_UP, useCalm } from "@/lib/motion";
 import { createBot } from "@/server/fns";
-import { botColor } from "@/shared";
+import { nextLook } from "@/shared";
 
-/** "New bot", in place: a name and what it is for, under the face it will get. The bot exists once created; its
+/** "New bot", in place: a name, what it is for and its look, under the face it will get. The bot exists once created; its
  * conversation starts empty. Checked on submit: a missing or refused name (taken, bad characters) is said under the
  * name, which takes focus. It settles in once: face and title, then the sentence, then the fields (SETTLE). */
 export function NewBot({ botCount, onCreated }: { botCount: number; onCreated: (id: string) => void }) {
   const [name, setName] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [look, setLook] = useState(() => nextLook(botCount));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const nameRef = useRef<HTMLInputElement>(null);
@@ -30,12 +32,12 @@ export function NewBot({ botCount, onCreated }: { botCount: number; onCreated: (
           e.preventDefault();
           if (!name.trim()) return refuse("Give it a name, like Scout.");
           setBusy(true);
-          createBot({ data: { name, instructions } }).then(({ id }) => onCreated(id), (e: Error) => (setBusy(false), refuse(e.message)));
+          createBot({ data: { name, instructions, look } }).then(({ id }) => onCreated(id), (e: Error) => (setBusy(false), refuse(e.message)));
         }}
       >
         <header className="flex flex-col items-center gap-3 text-center">
           <motion.div variants={settle} className="flex flex-col items-center gap-3">
-            <BotAvatar bot={{ name: name.trim() || " ", color: botColor(botCount) }} size="lg" />
+            <BotAvatar look={look} size={56} />
             <h1 className="text-2xl font-semibold">New bot</h1>
           </motion.div>
           <motion.p variants={settle} className="text-muted-foreground text-balance">
@@ -63,7 +65,15 @@ export function NewBot({ botCount, onCreated }: { botCount: number; onCreated: (
             <Field>
               <FieldLabel htmlFor="bot-instructions">Instructions</FieldLabel>
               <Textarea id="bot-instructions" value={instructions} onChange={(e) => setInstructions(e.target.value)} aria-describedby="bot-instructions-hint" placeholder="Research what I assign you. Cite primary sources." rows={4} className="max-h-60" />
-              <FieldDescription id="bot-instructions-hint">You can change both later in its details.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel id="bot-look" asChild>
+                <span>Look</span>
+              </FieldLabel>
+              <div role="group" aria-labelledby="bot-look">
+                <LookPicker look={look} onChange={(patch) => setLook({ ...look, ...patch })} />
+              </div>
+              <FieldDescription id="bot-instructions-hint">You can change all of this later in its details.</FieldDescription>
             </Field>
             <Button type="submit" disabled={busy}>
               {busy ? "Creating…" : "Create bot"}

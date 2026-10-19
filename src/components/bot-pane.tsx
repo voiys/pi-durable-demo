@@ -5,7 +5,7 @@ import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type 
 import { Activity, savedReports, Working, type ToolContext, type ToolResult } from "@/components/ai/activity";
 import { agentSender, isEvent, parseAgentMessage, SystemEvent, type AgentMsg, type Sender } from "@/components/ai/agents-message";
 import { Markdown } from "@/components/ai/markdown";
-import { BotAvatar } from "@/components/bot-avatar";
+import { BotAvatar, PLAIN_LOOK } from "@/components/bot-avatar";
 import { Attachment, AttachmentContent, AttachmentDescription, AttachmentTitle, AttachmentTrigger } from "@/components/ui/attachment";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
@@ -61,10 +61,6 @@ export function HeaderBar({ face, name, detailsOpen, onToggleDetails, back }: { 
   );
 }
 
-/** A speaker's face in the thread: a bot's color, or gray for a helper. */
-export function Face({ sender, className }: { sender: Pick<Sender, "name" | "color">; className: string }) {
-  return <BotAvatar bot={{ name: sender.name, color: sender.color ?? "var(--muted)" }} className={cn("rounded-full", !sender.color && "text-muted-foreground", className)} />;
-}
 
 /** When a gap this long separates two messages, a time divider goes between them (iMessage). */
 const GAP = 30 * 60 * 1000;
@@ -109,7 +105,7 @@ export function ThreadRow({ mine = false, sender, first, last, highlight = false
   return (
     // A background, not a ring: MessageScrollerItem's content-visibility clips anything drawn outside it.
     <Message align={mine ? "end" : "start"} className={cn("rounded-xl transition-colors duration-150", highlight && "bg-highlight")}>
-      {sender && <MessageAvatar>{last ? <Face sender={sender} className="size-7 text-xs" /> : <span className="size-7" />}</MessageAvatar>}
+      {sender && <MessageAvatar>{last ? <BotAvatar look={sender.look} size={28} /> : <span className="size-7" />}</MessageAvatar>}
       <MessageContent>
         {sender && first && (
           <MessageHeader>
@@ -337,7 +333,7 @@ export function Composer({ onSend, ready, onStop, placeholder, mentions = [] }: 
               onPointerMove={() => setPicked(i)}
               className="aria-selected:bg-accent flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-sm"
             >
-              <Face sender={m} className="size-5 text-xs" />
+              <BotAvatar look={m.look} size={20} />
               <span className="truncate font-medium">{m.name}</span>
             </li>
           ))}
@@ -561,7 +557,7 @@ type View = { turn: PiTurn; text: string; key: string; agent?: AgentMsg; sender?
 export function ThreadHeader({ bot, subagent, detailsOpen, onToggleDetails, onBack }: { bot: BotSummary; subagent?: { name: string }; detailsOpen: boolean; onToggleDetails: () => void; onBack: () => void }) {
   return (
     <HeaderBar
-      face={<Face sender={subagent ? { name: subagent.name } : bot} className="size-6 text-xs" />}
+      face={<BotAvatar look={subagent ? PLAIN_LOOK : bot.look} size={24} />}
       name={subagent?.name ?? bot.name}
       detailsOpen={detailsOpen}
       onToggleDetails={onToggleDetails}
@@ -637,7 +633,7 @@ export function BotPane({ userId, bot, session: sessionId, entry, bots }: { user
           {turns.length === 0 && session.status !== "open" && <ThreadSkeleton />}
           {turns.length === 0 && session.status === "open" && !session.running && (
             <ThreadEmpty
-              face={<Face sender={sessionId ? { name } : bot} className="size-14 text-2xl" />}
+              face={<BotAvatar look={sessionId ? PLAIN_LOOK : bot.look} size={56} />}
               title={name}
               description={sessionId ? `A helper ${bot.name} brought in. What it works on shows up here.` : bot.instructions || "Hand it something to research. It keeps one conversation and remembers all of it."}
               suggestions={sessionId ? [] : SUGGESTIONS}

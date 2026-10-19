@@ -30,3 +30,10 @@
   (`replyTo`) and a reply to a bot's message reaches that bot.
 - Groups have a description ("What it's for"): set when starting the group, edited in place in its panel, read by every
   member bot as part of its instructions.
+
+## 2026-10-19 — Bot faces are bloubs
+- Letter avatars are gone ("shitty letters that mean nothing"). Every bot is a bloub (bloub-react 1.0.0, MIT) with a
+  look the user picks: shape, color, resting face. Picked first grokbot-web, switched to bloub-react on the user's call.
+- Faces animate on their own (user: "make the faces autoanimate") and move between looks when one changes, morphs for
+  shape and face, a cross-fade for color ("transition between updates, even when I pick different config options").
+- A working bot's rail face becomes bloub's thinking dots; the colored working ring is gone.

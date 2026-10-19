@@ -75,16 +75,16 @@ Scope: `user`/`bot`/`group` = per User/Bot/Group instance, `shared` = D1, `agent
 | D1 | `verification` | code: migrations/0001_better_auth.sql:7 | shared | better-auth (server/auth.ts) | better-auth (server/auth.ts) | yes |
 | D1 | `__alchemy_migrations` | library: alchemy | shared | alchemy | alchemy | yes |
 | D1 | `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
-| User | `bots` | code: server/user.ts:17 | user | server/user.ts:60, server/user.ts:115, server/user.ts:117, server/user.ts:156, server/user.ts:203 | server/user.ts:24, server/user.ts:29, server/user.ts:51, server/user.ts:58, server/user.ts:81, server/user.ts:215 | yes |
-| User | `groups` | code: server/user.ts:18 | user | server/user.ts:168, server/user.ts:183, server/user.ts:191 | server/user.ts:31, server/user.ts:174 | yes |
-| User | `bot_agents` | code: server/user.ts:19 | user | server/user.ts:125, server/user.ts:126, server/user.ts:154 | server/user.ts:30 | yes |
-| User | `indexed` | code: server/user.ts:20 | user | server/user.ts:153, server/user.ts:200 | - | yes |
-| User | `messages` (FTS5) | code: server/user.ts:21 | user | server/user.ts:152, server/user.ts:201 | server/user.ts:215 | yes |
-| User | `glance` | code: server/user.ts:23 | user | server/user.ts:24, server/user.ts:61, server/user.ts:133, server/user.ts:140, server/user.ts:155 | server/user.ts:29 | yes |
-| User | kv `siwc:connection` | code: server/user.ts:234 | user | server/user.ts:244, server/user.ts:249, server/user.ts:290 | server/user.ts:234, server/user.ts:256, server/user.ts:284 | n/a |
-| User | kv `siwc:host` | code: server/user.ts:228 | user | server/user.ts:229 | server/user.ts:228 | n/a |
-| User | kv `siwc:models` | code: server/user.ts:250 | user | server/user.ts:250, server/user.ts:277 | server/user.ts:263 | n/a |
-| User | kv `siwc:pending` | code: server/user.ts:235 | user | server/user.ts:235, server/user.ts:242 | server/user.ts:240 | n/a |
+| User | `bots` | code: server/user.ts:17 | user | server/user.ts:22, server/user.ts:68, server/user.ts:122, server/user.ts:127, server/user.ts:129, server/user.ts:168, server/user.ts:215 | server/user.ts:30, server/user.ts:36, server/user.ts:58, server/user.ts:62, server/user.ts:89, server/user.ts:227 | yes |
+| User | `groups` | code: server/user.ts:24 | user | server/user.ts:180, server/user.ts:195, server/user.ts:203 | server/user.ts:38, server/user.ts:186 | yes |
+| User | `bot_agents` | code: server/user.ts:25 | user | server/user.ts:137, server/user.ts:138, server/user.ts:166 | server/user.ts:37 | yes |
+| User | `indexed` | code: server/user.ts:26 | user | server/user.ts:165, server/user.ts:212 | - | yes |
+| User | `messages` (FTS5) | code: server/user.ts:27 | user | server/user.ts:164, server/user.ts:213 | server/user.ts:227 | yes |
+| User | `glance` | code: server/user.ts:29 | user | server/user.ts:30, server/user.ts:69, server/user.ts:145, server/user.ts:152, server/user.ts:167 | server/user.ts:36 | yes |
+| User | kv `siwc:connection` | code: server/user.ts:246 | user | server/user.ts:256, server/user.ts:261, server/user.ts:302 | server/user.ts:246, server/user.ts:268, server/user.ts:296 | n/a |
+| User | kv `siwc:host` | code: server/user.ts:240 | user | server/user.ts:241 | server/user.ts:240 | n/a |
+| User | kv `siwc:models` | code: server/user.ts:262 | user | server/user.ts:262, server/user.ts:289 | server/user.ts:275 | n/a |
+| User | kv `siwc:pending` | code: server/user.ts:247 | user | server/user.ts:247, server/user.ts:254 | server/user.ts:252 | n/a |
 | User | `messages_config`, `messages_content`, `messages_data`, `messages_docsize`, `messages_idx` | library: FTS5 shadow tables of `messages` | user | FTS5 shadow tables of `messages` | FTS5 shadow tables of `messages` | yes |
 | User | `cf_agent_tool_runs`, `cf_agents_facet_runs`, `cf_agents_fibers`, `cf_agents_jobs`, `cf_agents_mcp_servers`, `cf_agents_runs`, `cf_agents_state`, `cf_agents_task_runs`, `cf_agents_task_steps`, `cf_agents_workflows` | library: agents SDK (Agent / Lifecycle) | agent | agents SDK (Agent / Lifecycle) | agents SDK (Agent / Lifecycle) | yes |
 | User | `_cf_KV`, `_cf_METADATA` | library: workerd internals | runtime | workerd internals | workerd internals | yes |
@@ -149,11 +149,11 @@ Scope: `user`/`bot`/`group` = per User/Bot/Group instance, `shared` = D1, `agent
 | Server fns | User | `setMainBot` | src/server/fns.ts:31 |
 | Server fns | User | `updateBot` | src/server/fns.ts:28 |
 | Server fns | User | `updateGroup` | src/server/fns.ts:83 |
-| User | BotData | `wipe` | src/server/user.ts:151 |
-| User | Bot | `wipe` | src/server/user.ts:150 |
-| User | Group | `init` | src/server/user.ts:167 |
-| User | Group | `update` | src/server/user.ts:182 |
-| User | Group | `wipe` | src/server/user.ts:190 |
+| User | BotData | `wipe` | src/server/user.ts:163 |
+| User | Bot | `wipe` | src/server/user.ts:162 |
+| User | Group | `init` | src/server/user.ts:179 |
+| User | Group | `update` | src/server/user.ts:194 |
+| User | Group | `wipe` | src/server/user.ts:202 |
 | Worker route | User | `completeConnect` | src/routes/auth.callback.ts:11 |
 
 ## Routes

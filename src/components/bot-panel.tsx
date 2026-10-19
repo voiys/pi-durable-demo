@@ -6,6 +6,7 @@ import { Markdown } from "@/components/ai/markdown";
 import { BotAvatar } from "@/components/bot-avatar";
 import { ConfirmSwap, InlineConfirm, QUIET } from "@/components/inline-confirm";
 import { BARE, CARD, CELL, DangerRow, FOCUS_IN, FOOTNOTE, Group, Identity, LINE, NAME, ON_HOVER, PanelBody, Saved, TAP, useField, VALUE } from "@/components/panel";
+import { LookPicker } from "@/components/look-picker";
 import { StepSlider } from "@/components/step-slider";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field";
@@ -108,7 +109,7 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
   return (
     <PanelBody>
       <Identity
-        face={<BotAvatar bot={bot} size="lg" className="size-12" />}
+        face={<BotAvatar look={bot.look} size={48} />}
         name={
           <>
             <label htmlFor="bot-panel-name" className="sr-only">
@@ -136,6 +137,10 @@ export function BotPanel({ bot, main, report, onDeleted }: { bot: BotSummary; ma
           </>
         }
       />
+
+      <Group title="Look">
+        <LookPicker look={bot.look} onChange={(look) => void updateBot({ data: { botId: bot.id, look } }).catch(fail("change its look"))} />
+      </Group>
 
       <Group title="Instructions" id="bot-panel-instructions-title" aside={<Saved at={instructions.savedAt} />} footer={instructions.error && <FieldError id="bot-panel-instructions-error">{instructions.error}</FieldError>}>
         <div className={CARD}>

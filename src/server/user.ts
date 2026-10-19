@@ -2,7 +2,7 @@ import type { OAuthCredential } from "@earendil-works/pi-ai";
 import { Agent } from "agents";
 import type { Env } from "../env.ts";
 import { authorize, complete, refresh, type Connection, type Pending } from "./siwc.ts";
-import { botColor, botObjectName, type BotSummary, type IndexRow, type SearchHit, type UserState } from "../shared.ts";
+import { assertLook, botObjectName, nextLook, type BotLook, type BotSummary, type IndexRow, type SearchHit, type UserState } from "../shared.ts";
 
 /**
  * One per better-auth user (name = user id). Owns the bot list (synced to the sidebar as agent state), the FTS5 search
@@ -14,7 +14,13 @@ export class User extends Agent<Env, UserState> {
   #refreshing: Promise<Connection> | null = null;
 
   onStart() {
-    this.sql`CREATE TABLE IF NOT EXISTS bots (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, instructions TEXT NOT NULL, color TEXT NOT NULL, updated_at INTEGER NOT NULL)`;
+    this.sql`CREATE TABLE IF NOT EXISTS bots (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, instructions TEXT NOT NULL, color TEXT NOT NULL, updated_at INTEGER NOT NULL, shape TEXT NOT NULL, expression TEXT NOT NULL)`;
+    // Bots from before looks: their color was a hex from the old palette (same order as LOOK_COLORS), now bloub's id.
+    if (!this.sql`SELECT 1 FROM pragma_table_info('bots') WHERE name = 'shape'`.length) {
+      this.sql`ALTER TABLE bots ADD COLUMN shape TEXT NOT NULL DEFAULT 'cercle'`;
+      this.sql`ALTER TABLE bots ADD COLUMN expression TEXT NOT NULL DEFAULT 'neutre'`;
+      ["#f97316", "#3b82f6", "#a855f7", "#ef4444", "#14b8a6", "#22c55e", "#eab308", "#ec4899"].forEach((hex, i) => this.sql`UPDATE bots SET color = ${nextLook(i).color} WHERE color = ${hex}`);
+    }
     this.sql`CREATE TABLE IF NOT EXISTS groups (id TEXT PRIMARY KEY, title TEXT NOT NULL, members TEXT NOT NULL)`;
     this.sql`CREATE TABLE IF NOT EXISTS bot_agents (bot_id TEXT NOT NULL, name TEXT NOT NULL, session TEXT NOT NULL, PRIMARY KEY (bot_id, name))`;
     this.sql`CREATE TABLE IF NOT EXISTS indexed (bot_id TEXT NOT NULL, entry_id TEXT NOT NULL, PRIMARY KEY (bot_id, entry_id))`;
@@ -22,10 +28,11 @@ export class User extends Agent<Env, UserState> {
     // The rail's glance layer: when the user last looked at each bot, and whether its main conversation is running.
     this.sql`CREATE TABLE IF NOT EXISTS glance (bot_id TEXT PRIMARY KEY, seen INTEGER NOT NULL, working INTEGER NOT NULL DEFAULT 0)`;
     this.sql`INSERT OR IGNORE INTO glance (bot_id, seen) SELECT id, updated_at FROM bots`; // bots from before the glance layer
+    this.#publish(); // the synced state is derived from these tables, so it follows their shape after a migration
   }
 
   #publish() {
-    const bots = this.sql<{ id: string; name: string; instructions: string; color: string; updated_at: number; seen: number; working: number }>`
+    const bots = this.sql<{ id: string; name: string; instructions: string; color: BotLook["color"]; shape: BotLook["shape"]; expression: BotLook["expression"]; updated_at: number; seen: number; working: number }>`
       SELECT b.*, g.seen, g.working FROM bots b JOIN glance g ON g.bot_id = b.id ORDER BY b.rowid`;
     const agents = this.sql<{ bot_id: string; name: string; session: string }>`SELECT * FROM bot_agents ORDER BY rowid`;
     const groups = this.sql<{ id: string; title: string; members: string }>`SELECT * FROM groups ORDER BY rowid`;
@@ -36,7 +43,7 @@ export class User extends Agent<Env, UserState> {
         id: b.id,
         name: b.name,
         instructions: b.instructions,
-        color: b.color,
+        look: assertLook({ shape: b.shape, color: b.color, expression: b.expression }),
         updatedAt: b.updated_at,
         agents: agents.filter((a) => a.bot_id === b.id).map(({ name, session }) => ({ name, session })),
         working: b.working === 1,
@@ -51,13 +58,14 @@ export class User extends Agent<Env, UserState> {
     if (this.sql`SELECT 1 FROM bots WHERE name = ${name} AND id != ${except ?? ""}`.length) throw new Error(`You already have a bot named ${name}`);
   }
 
-  async createBot(name: string, instructions: string): Promise<BotSummary> {
+  /** `look`: the one picked in the new-bot form; the fleet tool leaves it to `nextLook`. */
+  async createBot(name: string, instructions: string, look: BotLook = nextLook(this.sql`SELECT 1 FROM bots`.length)): Promise<BotSummary> {
     const trimmed = name.trim();
     this.#checkName(trimmed);
+    const { shape, color, expression } = assertLook(look);
     const id = crypto.randomUUID();
-    const color = botColor(this.sql`SELECT 1 FROM bots`.length);
     const now = Date.now();
-    this.sql`INSERT INTO bots (id, name, instructions, color, updated_at) VALUES (${id}, ${trimmed}, ${instructions.trim()}, ${color}, ${now})`;
+    this.sql`INSERT INTO bots (id, name, instructions, color, updated_at, shape, expression) VALUES (${id}, ${trimmed}, ${instructions.trim()}, ${color}, ${now}, ${shape}, ${expression})`;
     this.sql`INSERT INTO glance (bot_id, seen) VALUES (${id}, ${now})`;
     this.#publish();
     await this.#sendProfile(id);
@@ -107,8 +115,12 @@ export class User extends Agent<Env, UserState> {
     return bot;
   }
 
-  async updateBot(botId: string, patch: { name?: string; instructions?: string }) {
-    this.bot(botId);
+  async updateBot(botId: string, patch: { name?: string; instructions?: string; look?: Partial<BotLook> }) {
+    const bot = this.bot(botId);
+    if (patch.look) {
+      const { shape, color, expression } = assertLook({ ...bot.look, ...patch.look });
+      this.sql`UPDATE bots SET shape = ${shape}, color = ${color}, expression = ${expression} WHERE id = ${botId}`;
+    }
     if (patch.name !== undefined) {
       const name = patch.name.trim();
       this.#checkName(name, botId);

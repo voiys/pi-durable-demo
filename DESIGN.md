@@ -71,7 +71,7 @@ and trusting what comes back because you can open the receipts.** Every screen s
 | `--hairline` | `rgb(255 255 255 / 0.08)` | |
 | `--primary` | `#0071e3` | Kept: iMessage's dark `#0a84ff` fails white text (3.65:1) |
 
-**Bot colors** are identity, not UI: the avatar palette (`BOT_COLORS`) only ever fills avatars and a 2px presence ring.
+**Bot colors** are identity, not UI: a bot's look (`LOOK_COLORS`) only ever fills its face.
 Never text, never buttons, never backgrounds.
 
 ## 4. Typography
@@ -113,11 +113,21 @@ and tracking); `font-medium` is 510, `font-semibold` 590. No arbitrary `text-[Np
 
 ## 6. Components
 
+### Faces
+- Every bot is a bloub (`bloub-react`, MIT): a body shape, an ink color and a resting face, picked by the user — no
+  letters. `BotAvatar` (`src/components/bot-avatar.tsx`) takes a look and a px size; the eyes are cut out of the body, so
+  they show the surface behind on both themes. Helpers (and bots no longer in the catalog) are a plain gray circle.
+  Sizes: rail 36, panel 48, empty state and new bot 56, thread sender 28, header 24, rows and lists 20.
+- **Look** (details panel, under the identity; and in the new-bot form): one card, three rows (Shape 8, Color 10, Face
+  16) of square tiles, each drawn as the look it would give; the picked tile `--muted`, hover `--accent`. Native radios
+  (arrows within a row, Tab between rows); a pick saves at once and every face of that bot moves to it. Ink and cream
+  are left out of the colors: each vanishes on one theme. New bots start on the next shape and color in line.
+
 ### Rail
-- Canvas fill, no border (the color step is the edge). Bots 36px squircle avatars (12px radius), main bot first with an
-  8px gap + hairline. Groups after another hairline as overlapped round faces.
-- **Glance layer (required):** a working bot shows a 2px ring in its own color, softly pulsing (opacity, 1.6s, off under
-  reduced motion); unread shows a 8px blue dot top-right. Tooltip = name + one-line status ("Reading 3 pages…").
+- Canvas fill, no border (the color step is the edge). Bots as their 36px faces, main bot first with an 8px gap +
+  hairline. Groups after another hairline: a 36px muted tile holding up to three member faces.
+- **Glance layer (required):** a working bot's face becomes bloub's thinking dots (still dots under reduced motion);
+  unread shows a 8px blue dot top-right. Tooltip = name + one-line status ("Reading 3 pages…").
   Bots only: groups get no working/unread marker in the rail, since you see who's working inside the room and groups are
   short-lived (decided 2026-10-19).
 
@@ -237,7 +247,8 @@ State swaps use `initial={false}`, and history, panel lists and the rail on load
 | Disclosure | height via `--radix-collapsible-content-height`, 200ms |
 | Press | scale 0.96, 150ms, buttons only, never disabled |
 | Hover | color/background only, ≤150ms |
-| Working ring / shimmer | 1.6s loops (`ring-pulse` opacity 1→0.4→1); none under `prefers-reduced-motion` |
+| Faces | alive on their own while on screen (bloub idle: drift, float, blink), each waking 0–2s late so they never blink as one; a new shape or face morphs, a new color cross-fades 300ms; one still frame under reduced motion and on the look picker's tiles |
+| Shimmer | 1.6s loop; none under `prefers-reduced-motion` |
 
 Reduced motion: `<MotionConfig reducedMotion="user">` at the root drops every movement and scale, `useCalm` swaps blur
 recipes for `FADE`, `motion-safe:`/`motion-reduce:` gate the CSS ones and tw-animate's zoom and slide, so every change

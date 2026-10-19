@@ -86,7 +86,7 @@ export function SearchPanel({ bots }: { bots: BotSummary[] }) {
               return (
                 <li key={`${h.botId}:${h.entryId}`} className={cn(LINE, "not-first:before:left-11")}>
                   <Link to="/" search={{ bot: h.botId, entry: h.entryId, panel: "search" }} className={cn(TAP, "flex items-start gap-3 px-3 py-2.5 text-sm")}>
-                    {bot && <BotAvatar bot={bot} size="sm" className="mt-px" />}
+                    {bot && <BotAvatar look={bot.look} size={20} className="mt-px" />}
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="font-medium break-words">
                         {h.name}

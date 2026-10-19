@@ -202,6 +202,9 @@ importers:
       better-auth:
         specifier: 1.7.10
         version: 1.7.10(@tanstack/react-start@1.169.3(esbuild@0.28.2)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(rolldown@1.2.14)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.20.6)(yaml@2.9.1)))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      bloub-react:
+        specifier: 1.0.0
+        version: 1.0.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -3349,6 +3352,13 @@ packages:
 
   bignumber.js@9.3.1:
     resolution: {integrity: sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ==}
+
+  bloub-react@1.0.0:
+    resolution: {integrity: sha512-/mTGNnUw7l4kUVkqH5rVQKxIdLZvn2CE7zw+bnO8wpHzX61DimZ3i2nZbECypsrqEO1q463hOUu92Dw3QjkcYQ==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      react: ^19.0.0
+      react-dom: ^19.0.0
 
   body-parser@2.3.0:
     resolution: {integrity: sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==}
@@ -8554,6 +8564,11 @@ snapshots:
       zod: 4.6.7
 
   bignumber.js@9.3.1: {}
+
+  bloub-react@1.0.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+    dependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
 
   body-parser@2.3.0:
     dependencies:

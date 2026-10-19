@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { env } from "../env.ts";
-import { botObjectName, type BotDetails } from "../shared.ts";
+import { botObjectName, type BotDetails, type BotLook } from "../shared.ts";
 import { auth, requireUser } from "./auth.ts";
 
 const user = async () => env.User.getByName((await requireUser(getRequestHeaders())).id);
@@ -21,10 +21,10 @@ export const searchMessages = createServerFn({ method: "GET" })
   .handler(async ({ data }) => (await (await user()).search(data)).map((h) => ({ ...h })));
 
 export const createBot = createServerFn({ method: "POST" })
-  .validator((d: { name: string; instructions: string }) => d)
-  .handler(async ({ data }) => ({ id: (await (await user()).createBot(data.name, data.instructions)).id }));
+  .validator((d: { name: string; instructions: string; look: BotLook }) => d)
+  .handler(async ({ data }) => ({ id: (await (await user()).createBot(data.name, data.instructions, data.look)).id }));
 export const updateBot = createServerFn({ method: "POST" })
-  .validator((d: { botId: string; name?: string; instructions?: string }) => d)
+  .validator((d: { botId: string; name?: string; instructions?: string; look?: Partial<BotLook> }) => d)
   .handler(async ({ data: { botId, ...patch } }) => env.User.getByName(await owner(botId)).updateBot(botId, patch));
 export const setMainBot = createServerFn({ method: "POST" })
   .validator((botId: string) => botId)

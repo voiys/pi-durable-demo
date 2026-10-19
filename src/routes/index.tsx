@@ -2,7 +2,7 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useAgent } from "agents/react";
 import { Plus, Search, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, type CSSProperties, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { z } from "zod";
 import { BotAvatar } from "@/components/bot-avatar";
 import { BotPanel } from "@/components/bot-panel";
@@ -50,7 +50,7 @@ const status = (b: Pick<BotSummary, "working" | "unread">) => (b.working ? "Work
  * no bounce; a fade under reduced motion) and fades out when read. A new face rises into the rail (ARRIVE).
  * Resting on it (or focusing it) shows a small card with a glance at who it is; the face itself opens the conversation.
  */
-function RailItem({ label, active, working = false, unread = false, color, onClick, face, card }: { label: string; active: boolean; working?: boolean; unread?: boolean; color?: string; onClick: () => void; face: ReactNode; card: Omit<GlanceProps, "face"> }) {
+function RailItem({ label, active, unread = false, onClick, face, card }: { label: string; active: boolean; unread?: boolean; onClick: () => void; face: ReactNode; card: Omit<GlanceProps, "face"> }) {
   return (
     <HoverCard openDelay={300} closeDelay={100}>
       <HoverCardTrigger asChild>
@@ -68,14 +68,6 @@ function RailItem({ label, active, working = false, unread = false, color, onCli
             className={cn(
               "bg-foreground pointer-events-none absolute top-1/2 -left-[11px] w-1 -translate-y-1/2 rounded-r-full transition-[height,opacity] duration-150 ease-out",
               active ? "h-5 opacity-100" : "h-2 opacity-0 group-hover/rail:opacity-100",
-            )}
-          />
-          <span
-            aria-hidden
-            style={{ "--bot": color } as CSSProperties}
-            className={cn(
-              "pointer-events-none absolute inset-0 rounded-[15px] ring-2 transition-[box-shadow] duration-150 ease-out ring-inset",
-              working ? "ring-(color:--bot) motion-safe:animate-ring-pulse" : "ring-transparent",
             )}
           />
           {face}
@@ -183,11 +175,9 @@ function App() {
                     key={b.id}
                     label={[b.name, main && "main bot", status(b)].filter(Boolean).join(", ")}
                     active={active}
-                    working={b.working}
                     unread={b.unread}
-                    color={b.color}
                     onClick={() => navigate({ search: (s) => ({ bot: b.id, panel: s.panel }) })}
-                    face={<BotAvatar bot={b} />}
+                    face={<BotAvatar look={b.look} size={36} working={b.working} />}
                     card={{ name: b.name, line: [main && "Main bot", status(b) ?? "Up to date"].filter(Boolean).join(" · "), about: b.instructions }}
                   />,
                 ];

@@ -1,8 +1,9 @@
 // Types and helpers shared by the browser and the Durable Objects (no server imports here).
+import type { ColorId, ExpressionId, ShapeId } from "bloub-react";
 
 /** A bot: one endless conversation with its own OptChat memory (DECISIONS.md). `agents` are its subagents. The glance
  * layer: `working` while a run of its main conversation is live, `unread` when it changed since the user last looked. */
-export type BotSummary = { id: string; name: string; instructions: string; color: string; updatedAt: number; agents: { name: string; session: string }[]; working: boolean; unread: boolean };
+export type BotSummary = { id: string; name: string; instructions: string; look: BotLook; updatedAt: number; agents: { name: string; session: string }[]; working: boolean; unread: boolean };
 export type SearchHit = { botId: string; entryId: string; role: string; snippet: string; name: string };
 /** FTS5 snippet() wraps each match in these control characters (src/server/user.ts search), so text never collides with them. */
 export const MATCH_OPEN = "\u0002";
@@ -29,10 +30,25 @@ export type LibraryItem = { id: number; title: string; createdAt: number };
 /** What a bot's details panel shows, read from its Bot DO and BotData DO. */
 export type BotDetails = { memory: MemoryStats; routines: Routine[]; library: LibraryItem[]; tables: { name: string; rows: number }[] };
 
-/** Avatar colors a new bot picks from (Tailwind palette, so they read on both themes). */
-export const BOT_COLORS = ["#f97316", "#3b82f6", "#a855f7", "#ef4444", "#14b8a6", "#22c55e", "#eab308", "#ec4899"] as const;
-/** The color the user's next bot gets, given how many bots they have (src/server/user.ts createBot). */
-export const botColor = (count: number) => BOT_COLORS[count % BOT_COLORS.length];
+/** A bot's face (bloub-react): its body shape, its ink and its resting expression. The color is identity, never UI. */
+export type BotLook = { shape: ShapeId; color: ColorId; expression: ExpressionId };
+/** What the look picker offers, in order, with English names (bloub's ids are French). Ink and cream are left out: each
+ * vanishes on one theme's canvas. */
+export const LOOK_SHAPES: [ShapeId, string][] = [["cercle", "Circle"], ["galet", "Pebble"], ["squircle", "Squircle"], ["capsule", "Capsule"], ["triangle", "Triangle"], ["hexagone", "Hexagon"], ["nuage", "Cloud"], ["goutte", "Drop"]];
+export const LOOK_COLORS: [ColorId, string][] = [["orange", "Orange"], ["bleu", "Blue"], ["violet", "Violet"], ["rouge", "Red"], ["turquoise", "Teal"], ["vert", "Green"], ["ambre", "Amber"], ["rose", "Pink"], ["brun", "Brown"], ["gris", "Gray"]];
+export const LOOK_EXPRESSIONS: [ExpressionId, string][] = [
+  ["neutre", "Neutral"], ["attentif", "Attentive"], ["heureux", "Happy"], ["hilare", "Laughing"], ["excite", "Excited"], ["fier", "Proud"], ["curieux", "Curious"], ["surpris", "Surprised"],
+  ["timide", "Shy"], ["confus", "Confused"], ["mefiant", "Suspicious"], ["blase", "Unimpressed"], ["somnolent", "Sleepy"], ["triste", "Sad"], ["effraye", "Scared"], ["colere", "Angry"],
+];
+/** The look the user's next bot starts with, given how many bots they have: shapes and colors walk their lists. */
+export const nextLook = (count: number): BotLook => ({ shape: LOOK_SHAPES[count % LOOK_SHAPES.length][0], color: LOOK_COLORS[count % LOOK_COLORS.length][0], expression: "neutre" });
+/** A look from outside (a form, a server fn): each part must be one the picker offers. */
+export function assertLook(look: BotLook): BotLook {
+  if (!LOOK_SHAPES.some(([id]) => id === look.shape)) throw new Error(`Unknown shape ${look.shape}`);
+  if (!LOOK_COLORS.some(([id]) => id === look.color)) throw new Error(`Unknown color ${look.color}`);
+  if (!LOOK_EXPRESSIONS.some(([id]) => id === look.expression)) throw new Error(`Unknown expression ${look.expression}`);
+  return look;
+}
 
 /** Bot DO names are `<userId>--<botId>`; the Worker gates sockets on that prefix. */
 export const botObjectName = (userId: string, botId: string) => `${userId}--${botId}`;
