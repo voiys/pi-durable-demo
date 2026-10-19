@@ -4,12 +4,12 @@ Date of research: 2026-10-18. Everything below was read in this run.
 
 ## Path legend (all pinned in ctx; read with rg)
 
-- `CF` = `/Users/voiys/.ctx/sources/github.com/cloudflare/agents/7dd51c518c517b0f9f92ec7e2c3ad1004222955e` (ctx label `cloudflare-agents-source`, pinned in this run; main @ 2026-10-16, package `agents` 0.28.1)
-- `PI13` = `/Users/voiys/.ctx/sources/github.com/earendil-works/pi/71023aec1546d6d677a65669c5665c0927ce0dd0` (ctx label `pi-source-v1.3.0`, tag v1.3.0)
+- `CF` = `https://github.com/cloudflare/agents/tree/7dd51c518c517b0f9f92ec7e2c3ad1004222955e` (ctx label `cloudflare-agents-source`, pinned in this run; main @ 2026-10-16, package `agents` 0.28.1)
+- `PI13` = `https://github.com/earendil-works/pi/tree/71023aec1546d6d677a65669c5665c0927ce0dd0` (ctx label `pi-source-v1.3.0`, tag v1.3.0)
 - `PI103` = `.../pi/d78dc83d633229d12f8b79631384c4c2717c399f` (label `pi-source-v1.0.3`; Cloudflare's lockfile uses pi-durable 1.0.0)
-- `OPTD` = `/Users/voiys/.ctx/sources/github.com/kevinqz/optchat-durable/6b2285cf88ab803d859a0efb038610f2a003ff50` (label `optchat-durable`)
-- `OPT` = `/Users/voiys/.ctx/sources/github.com/jonaslsaa/pi-optchat/aae1caf7715830051d327f819fc776792211167a` (label `pi-optchat`)
-- `CODEX` = `/Users/voiys/.ctx/sources/github.com/openai/codex/333c41eef6b9ba3697fe913973fd58afe32d1ef5` (label `codex`, snapshot of 2026-09-07)
+- `OPTD` = `https://github.com/kevinqz/optchat-durable/tree/6b2285cf88ab803d859a0efb038610f2a003ff50` (label `optchat-durable`)
+- `OPT` = `https://github.com/jonaslsaa/pi-optchat/tree/aae1caf7715830051d327f819fc776792211167a` (label `pi-optchat`)
+- `CODEX` = `https://github.com/openai/codex/tree/333c41eef6b9ba3697fe913973fd58afe32d1ef5` (label `codex`, snapshot of 2026-09-07)
 - SIWC doc: https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations.md (re-fetched this run to `raw/pitools/preview-limitations.md`, line 14)
 - npm (`npm view`): agents latest 0.28.1 (2026-10-13); `@earendil-works/pi-durable` versions 1.0.0 .. 1.3.0 (latest 1.3.0); `@earendil-works/pi-agent-core` latest 1.3.0. Tarballs unpacked under `raw/pitools/{agents,piai}`.
 

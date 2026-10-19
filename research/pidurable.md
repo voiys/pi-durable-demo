@@ -1,10 +1,10 @@
 # pidurable research notes (2026-10-18)
 
 Path labels (ctx):
-- AG = ctx `cloudflare-agents-main` = /Users/voiys/.ctx/sources/github.com/cloudflare/agents/7dd51c518c517b0f9f92ec7e2c3ad1004222955e (main, Oct 16 2026, packages/agents version 0.28.1)
-- PI = ctx `pi-source-v1.3.0` = /Users/voiys/.ctx/sources/github.com/earendil-works/pi/71023aec1546d6d677a65669c5665c0927ce0dd0 (tag v1.3.0)
-- PDC = ctx `pi-durable-cloudflare` = /Users/voiys/.ctx/sources/github.com/earendil-works/pi-durable-cloudflare/dcb56ce2d174babb3f00112ac5b8cd597e58ab45
-- DK = ctx `siwc-devkit` = /Users/voiys/.ctx/sources/github.com/openai/sign-in-with-chatgpt-devkit/0a36fefeb913055c8c7a1a29b63d82b96b2e841a
+- AG = ctx `cloudflare-agents-main` = https://github.com/cloudflare/agents/tree/7dd51c518c517b0f9f92ec7e2c3ad1004222955e (main, Oct 16 2026, packages/agents version 0.28.1)
+- PI = ctx `pi-source-v1.3.0` = https://github.com/earendil-works/pi/tree/71023aec1546d6d677a65669c5665c0927ce0dd0 (tag v1.3.0)
+- PDC = ctx `pi-durable-cloudflare` = https://github.com/earendil-works/pi-durable-cloudflare/tree/dcb56ce2d174babb3f00112ac5b8cd597e58ab45
+- DK = ctx `siwc-devkit` = https://github.com/openai/sign-in-with-chatgpt-devkit/tree/0a36fefeb913055c8c7a1a29b63d82b96b2e841a
 - RAW = scratchpad/research/raw/pidurable (siwc-*.md, earendil-cf.html.txt, grok1.txt, fx_*.json, agents-0.28.1 tarball in x/, pi-ai-1.3.0 tarball in ai/)
 
 ## 1. Where it lives

@@ -1,6 +1,6 @@
 # SIWC research (2026-10-18)
 Raw: .../research/raw/siwc/ (md/ = developers.openai.com/siwc/*.md fetched via curl; fx_*.json = api.fxtwitter.com mirrors of X posts; grok1/2.txt = grok leads)
-Devkit pinned: ctx label siwc-devkit, commit 0a36fefeb913055c8c7a1a29b63d82b96b2e841a (path /Users/voiys/.ctx/sources/github.com/openai/sign-in-with-chatgpt-devkit/<commit>)
+Devkit pinned: ctx label siwc-devkit, commit 0a36fefeb913055c8c7a1a29b63d82b96b2e841a
 Docs base: https://developers.openai.com/siwc (+ .md twins). /siwc/token-sharing-open-source/ui-ux-guidelines is 404; real one is /siwc/ui-ux-guidelines.md.
 
 ## 1. Announcement + policy
